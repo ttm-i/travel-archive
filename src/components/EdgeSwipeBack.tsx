@@ -128,7 +128,9 @@ export function EdgeSwipeBack({ children, previousLabel, back }: { children: Rea
       onPointerCancel={cancel}
       onClickCapture={suppressGestureClick}
     >
-      <div className="edge-swipe-underlay" aria-hidden="true"><ArrowLeft /><span>戻る</span><strong>{previousLabel}</strong></div>
+      <div className="edge-swipe-underlay" aria-hidden="true">
+        <div className="edge-swipe-cue"><ArrowLeft /><span>{previousLabel}へ戻る</span></div>
+      </div>
       <div className="edge-swipe-surface" style={style}>{children}</div>
     </div>
   )
