@@ -17,7 +17,8 @@
     "lucide-react": "^1.59.0",
     "maplibre-gl": "^6.15.0",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "workbox-window": "^7.4.1"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^7.0.1",
