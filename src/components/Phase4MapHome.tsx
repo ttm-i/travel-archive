@@ -8,7 +8,7 @@ import { BlobImage } from './BlobImage'
 import { DateRangeField } from './Phase2Screens'
 import { OfflineJapanMap } from './OfflineJapanMap'
 
-export function Phase4MapHome({ initialSpotId, back, startFirstTrip, openSpot, openPrefecture, openTrip, filter, changeFilter }: { initialSpotId?: string; back?: () => void; startFirstTrip: () => void; openSpot: (id: string) => void; openPrefecture: (code: number) => void; openTrip: (id: string) => void; filter: MapFilter; changeFilter: (filter: MapFilter) => void }) {
+export function Phase4MapHome({ initialSpotId, back, startFirstTrip, openSpot, openPrefecture, openTrip, filter, changeFilter, preview = false }: { initialSpotId?: string; back?: () => void; startFirstTrip: () => void; openSpot: (id: string) => void; openPrefecture: (code: number) => void; openTrip: (id: string) => void; filter: MapFilter; changeFilter: (filter: MapFilter) => void; preview?: boolean }) {
   const [selectedSpotId, setSelectedSpotId] = useState<string | undefined>(initialSpotId)
   const [selectedPrefectureCode, setSelectedPrefectureCode] = useState<number>()
   const [tripPickerOpen, setTripPickerOpen] = useState(false)
@@ -63,9 +63,9 @@ export function Phase4MapHome({ initialSpotId, back, startFirstTrip, openSpot, o
     if (clusterSpotIds && clusterRows.length < 2) setClusterSpotIds(undefined)
   }, [clusterRows.length, clusterSpotIds])
   useEffect(() => {
-    if (!selected) return
+    if (preview || !selected) return
     requestAnimationFrame(() => panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }))
-  }, [selected?.spot.id])
+  }, [preview, selected?.spot.id])
 
   const openFilters = () => { setDraftFilter(filter); setFilterOpen(true) }
   const toggleCompanion = (id: string) => setDraftFilter((current) => ({ ...current, companionCategoryIds: current.companionCategoryIds.includes(id) ? current.companionCategoryIds.filter((value) => value !== id) : [...current.companionCategoryIds, id] }))

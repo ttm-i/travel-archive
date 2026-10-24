@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
   ArrowLeft,
@@ -53,8 +53,9 @@ type View =
   | { name: 'backup' }
   | { name: 'restore' }
   | { name: 'trash' }
-type HistoryEntry = { view: View; activeTab: Tab }
+type HistoryEntry = { view: View; activeTab: Tab; scrollY: number }
 type RouteMotion = 'none' | 'forward' | 'back' | 'tab' | 'replace'
+type BrowsingRoute = { content: React.ReactNode; fallback?: View; swipeBack?: boolean }
 
 function viewLabel(view: View) {
   if (view.name === 'root') return view.tab === 'map' ? '訪問マップ' : view.tab === 'trips' ? '旅行' : view.tab === 'prefectures' ? '都道府県' : '設定'
@@ -100,22 +101,40 @@ function App() {
   const [tripScrollY, setTripScrollY] = useState(0)
   const [routeMotion, setRouteMotion] = useState<RouteMotion>('none')
   const [routeSequence, setRouteSequence] = useState(0)
+  const pendingScrollY = useRef<number | undefined>(undefined)
+
+  useLayoutEffect(() => {
+    if (pendingScrollY.current === undefined) return
+    const top = pendingScrollY.current
+    pendingScrollY.current = undefined
+    window.scrollTo({ top, left: 0, behavior: 'auto' })
+  }, [view, routeSequence])
+
   const changeView = (motion: RouteMotion, update: () => void) => {
     setRouteMotion(motion)
     setRouteSequence((current) => current + 1)
     update()
   }
-  const openTab = (tab: Tab) => changeView('tab', () => { setHistory([]); setActiveTab(tab); setView({ name: 'root', tab }) })
+  const openTab = (tab: Tab) => {
+    pendingScrollY.current = 0
+    changeView('tab', () => { setHistory([]); setActiveTab(tab); setView({ name: 'root', tab }) })
+  }
   const navigate = (next: View) => {
+    const scrollY = window.scrollY
+    pendingScrollY.current = 0
     changeView('forward', () => {
-      setHistory((current) => [...current, { view, activeTab }])
+      setHistory((current) => [...current, { view, activeTab, scrollY }])
       setActiveTab(tabForView(next, activeTab))
       setView(next)
     })
   }
-  const replace = (next: View) => changeView('replace', () => { setActiveTab(tabForView(next, activeTab)); setView(next) })
+  const replace = (next: View) => {
+    pendingScrollY.current = 0
+    changeView('replace', () => { setActiveTab(tabForView(next, activeTab)); setView(next) })
+  }
   const goBack = (fallback: View, motion: RouteMotion = 'back') => {
     const previous = history.at(-1)
+    pendingScrollY.current = previous?.scrollY ?? 0
     changeView(motion, () => {
       if (!previous) { setActiveTab(tabForView(fallback, activeTab)); setView(fallback); return }
       setHistory((current) => current.slice(0, -1))
@@ -123,40 +142,62 @@ function App() {
       setView(previous.view)
     })
   }
-  const routeStage = (content: React.ReactNode) => <div key={routeSequence} className={`route-stage route-${routeMotion}`} data-route-motion={routeMotion}>{content}</div>
-  const browsingShell = (content: React.ReactNode, swipeBack?: { fallback: View }) => {
-    const previous = history.at(-1)?.view ?? swipeBack?.fallback
-    const stage = routeStage(content)
-    return <div className="app-shell browsing-shell">{swipeBack && previous
-      ? <EdgeSwipeBack previousLabel={viewLabel(previous)} back={() => goBack(swipeBack.fallback, 'none')}>{stage}</EdgeSwipeBack>
+
+  const renderBrowsingView = (target: View, preview = false, historyDepth = history.length): BrowsingRoute | undefined => {
+    if (target.name === 'trip' && target.id === 'kyoto') {
+      const fallback: View = { name: 'root', tab: 'trips' }
+      return { content: <TripDetail back={() => goBack(fallback)} openSpot={(id) => navigate({ name: 'spot', id })} />, fallback, swipeBack: true }
+    }
+    if (target.name === 'trip') {
+      const fallback: View = { name: 'root', tab: 'trips' }
+      return { content: <SavedTripDetail id={target.id} back={() => goBack(fallback)} edit={() => navigate({ name: 'trip-editor', id: target.id })} remove={() => void (async () => { if (!window.confirm('この旅行をゴミ箱へ移動しますか？スポットは別の旅行から引き続き利用できます。')) return; await moveTripToTrash(target.id); goBack(fallback) })()} addSpot={() => navigate({ name: 'spot-editor', tripId: target.id })} openSpot={(id) => navigate({ name: 'spot', id, fromTripId: target.id })} />, fallback, swipeBack: true }
+    }
+    if (target.name === 'prefecture') {
+      const fallback: View = { name: 'root', tab: 'prefectures' }
+      return { content: <PrefectureDetail code={target.code} back={() => goBack(fallback)} openSpot={(id) => navigate({ name: 'spot', id, fromPrefectureCode: target.code })} />, fallback, swipeBack: true }
+    }
+    if (target.name === 'spot' && ['temple', 'cafe', 'lake'].includes(target.id)) {
+      const fallback: View = { name: 'trip', id: 'kyoto' }
+      return { content: <SpotDetail back={() => goBack(fallback)} openTrip={() => navigate({ name: 'trip', id: 'kyoto' })} />, fallback, swipeBack: true }
+    }
+    if (target.name === 'spot') {
+      const fallback: View = target.fromTripId
+        ? { name: 'trip', id: target.fromTripId }
+        : target.fromPrefectureCode
+          ? { name: 'prefecture', code: target.fromPrefectureCode }
+          : { name: 'root', tab: target.fromMap ? 'map' : 'trips' }
+      return { content: <SavedSpotDetail id={target.id} back={() => goBack(fallback)} edit={() => navigate({ name: 'spot-edit', id: target.id, contextTripId: target.fromTripId })} removeVisit={async (visitId) => { const result = await detachVisitFromSpot(visitId); if (result.spotDeleted) goBack({ name: 'root', tab: activeTab }); return result }} openTrip={(id) => navigate({ name: 'trip', id })} openPrefecture={(code) => navigate({ name: 'prefecture', code })} openMap={() => { setMapFilter(DEFAULT_MAP_FILTER); navigate({ name: 'root', tab: 'map', focusSpotId: target.id }) }} />, fallback, swipeBack: true }
+    }
+    if (target.name !== 'root') return undefined
+    return { content: <>
+      {target.tab === 'map' && <Phase4MapHome preview={preview} initialSpotId={target.focusSpotId} back={historyDepth ? () => goBack({ name: 'root', tab: 'map' }) : undefined} startFirstTrip={() => navigate({ name: 'trip-editor' })} openSpot={(id) => navigate({ name: 'spot', id, fromMap: true })} openPrefecture={(code) => navigate({ name: 'prefecture', code })} openTrip={(id) => navigate({ name: 'trip', id })} filter={mapFilter} changeFilter={setMapFilter} />}
+      {target.tab === 'trips' && <SavedTripsHome openTrip={(id) => navigate({ name: 'trip', id })} add={() => navigate({ name: 'trip-editor' })} filter={tripSearch} changeFilter={setTripSearch} scrollY={preview ? 0 : tripScrollY} rememberScroll={preview ? () => undefined : setTripScrollY} />}
+      {target.tab === 'prefectures' && <SavedPrefecturesHome openPrefecture={(code) => navigate({ name: 'prefecture', code })} />}
+      {target.tab === 'settings' && <SettingsHome openCategories={(kind) => navigate({ name: 'categories', kind })} openBackup={() => navigate({ name: 'backup' })} openRestore={() => navigate({ name: 'restore' })} openTrash={() => navigate({ name: 'trash' })} />}
+    </> }
+  }
+
+  const routeStage = (content: React.ReactNode, previewKey?: string) => previewKey
+    ? <div key={previewKey} className="route-stage edge-swipe-preview-stage">{content}</div>
+    : <div key={routeSequence} className={`route-stage route-${routeMotion}`} data-route-motion={routeMotion}>{content}</div>
+  const browsingShell = (route: BrowsingRoute) => {
+    const previousEntry = history.at(-1)
+    const previousView = previousEntry?.view ?? route.fallback
+    const previousRoute = route.swipeBack && previousView
+      ? renderBrowsingView(previousView, true, previousEntry ? Math.max(0, history.length - 1) : 0)
+      : undefined
+    const previousStage = previousRoute && previousView
+      ? routeStage(previousRoute.content, `preview-${JSON.stringify(previousView)}`)
+      : undefined
+    const stage = routeStage(route.content)
+    return <div className="app-shell browsing-shell">{route.swipeBack && previousView
+      ? <EdgeSwipeBack previous={previousStage} previousLabel={viewLabel(previousView)} previousScrollY={previousEntry?.scrollY ?? 0} back={() => goBack(route.fallback!, 'none')}>{stage}</EdgeSwipeBack>
       : stage}<BottomNav active={activeTab} select={openTab} /></div>
   }
   const standaloneShell = (content: React.ReactNode) => <div className="app-shell standalone-shell">{routeStage(content)}</div>
 
-  if (view.name === 'trip' && view.id === 'kyoto') {
-    const fallback: View = { name: 'root', tab: 'trips' }
-    return browsingShell(<TripDetail back={() => goBack(fallback)} openSpot={(id) => navigate({ name: 'spot', id })} />, { fallback })
-  }
-  if (view.name === 'trip') {
-    const fallback: View = { name: 'root', tab: 'trips' }
-    return browsingShell(<SavedTripDetail id={view.id} back={() => goBack(fallback)} edit={() => navigate({ name: 'trip-editor', id: view.id })} remove={() => void (async () => { if (!window.confirm('この旅行をゴミ箱へ移動しますか？スポットは別の旅行から引き続き利用できます。')) return; await moveTripToTrash(view.id); goBack(fallback) })()} addSpot={() => navigate({ name: 'spot-editor', tripId: view.id })} openSpot={(id) => navigate({ name: 'spot', id, fromTripId: view.id })} />, { fallback })
-  }
-  if (view.name === 'prefecture') {
-    const fallback: View = { name: 'root', tab: 'prefectures' }
-    return browsingShell(<PrefectureDetail code={view.code} back={() => goBack(fallback)} openSpot={(id) => navigate({ name: 'spot', id, fromPrefectureCode: view.code })} />, { fallback })
-  }
-  if (view.name === 'spot' && ['temple', 'cafe', 'lake'].includes(view.id)) {
-    const fallback: View = { name: 'trip', id: 'kyoto' }
-    return browsingShell(<SpotDetail back={() => goBack(fallback)} openTrip={() => navigate({ name: 'trip', id: 'kyoto' })} />, { fallback })
-  }
-  if (view.name === 'spot') {
-    const fallback: View = view.fromTripId
-      ? { name: 'trip', id: view.fromTripId }
-      : view.fromPrefectureCode
-        ? { name: 'prefecture', code: view.fromPrefectureCode }
-        : { name: 'root', tab: view.fromMap ? 'map' : 'trips' }
-    return browsingShell(<SavedSpotDetail id={view.id} back={() => goBack(fallback)} edit={() => navigate({ name: 'spot-edit', id: view.id, contextTripId: view.fromTripId })} removeVisit={async (visitId) => { const result = await detachVisitFromSpot(visitId); if (result.spotDeleted) goBack({ name: 'root', tab: activeTab }); return result }} openTrip={(id) => navigate({ name: 'trip', id })} openPrefecture={(code) => navigate({ name: 'prefecture', code })} openMap={() => { setMapFilter(DEFAULT_MAP_FILTER); navigate({ name: 'root', tab: 'map', focusSpotId: view.id }) }} />, { fallback })
-  }
+  const browsingRoute = renderBrowsingView(view)
+  if (browsingRoute) return browsingShell(browsingRoute)
   if (view.name === 'trip-editor') return standaloneShell(<SavedTripEditor tripId={view.id} back={() => goBack({ name: 'root', tab: 'trips' })} saved={(id) => replace({ name: 'trip', id })} />)
   if (view.name === 'categories') return standaloneShell(<CategoryManager kind={view.kind} back={() => goBack({ name: 'root', tab: 'settings' })} />)
   if (view.name === 'spot-editor') return standaloneShell(<SpotEditor tripId={view.tripId} back={() => goBack({ name: 'trip', id: view.tripId })} saved={(id) => replace({ name: 'spot', id, fromTripId: view.tripId })} />)
@@ -165,17 +206,7 @@ function App() {
   if (view.name === 'restore') return standaloneShell(<RestoreScreen back={() => goBack({ name: 'root', tab: 'settings' })} />)
   if (view.name === 'trash') return standaloneShell(<TrashScreen back={() => goBack({ name: 'root', tab: 'settings' })} />)
 
-  return (
-    <div className="app-shell">
-      {routeStage(<>
-        {view.tab === 'map' && <Phase4MapHome initialSpotId={view.focusSpotId} back={history.length ? () => goBack({ name: 'root', tab: 'map' }) : undefined} startFirstTrip={() => navigate({ name: 'trip-editor' })} openSpot={(id) => navigate({ name: 'spot', id, fromMap: true })} openPrefecture={(code) => navigate({ name: 'prefecture', code })} openTrip={(id) => navigate({ name: 'trip', id })} filter={mapFilter} changeFilter={setMapFilter} />}
-        {view.tab === 'trips' && <SavedTripsHome openTrip={(id) => navigate({ name: 'trip', id })} add={() => navigate({ name: 'trip-editor' })} filter={tripSearch} changeFilter={setTripSearch} scrollY={tripScrollY} rememberScroll={setTripScrollY} />}
-        {view.tab === 'prefectures' && <SavedPrefecturesHome openPrefecture={(code) => navigate({ name: 'prefecture', code })} />}
-        {view.tab === 'settings' && <SettingsHome openCategories={(kind) => navigate({ name: 'categories', kind })} openBackup={() => navigate({ name: 'backup' })} openRestore={() => navigate({ name: 'restore' })} openTrash={() => navigate({ name: 'trash' })} />}
-      </>)}
-      <BottomNav active={activeTab} select={openTab} />
-    </div>
-  )
+  return null
 }
 
 function AppHeader({ eyebrow, title, action }: { eyebrow?: string; title: string; action?: React.ReactNode }) {

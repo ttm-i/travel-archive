@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent, type ReactNode } from 'react'
 import { ArrowLeft } from 'lucide-react'
 
 const EDGE_START_WIDTH = 24
@@ -24,9 +24,10 @@ export function isStandalonePwa() {
     || (window.navigator as StandaloneNavigator).standalone === true
 }
 
-export function EdgeSwipeBack({ children, previousLabel, back }: { children: ReactNode; previousLabel: string; back: () => void }) {
+export function EdgeSwipeBack({ children, previous, previousLabel, previousScrollY = 0, back }: { children: ReactNode; previous?: ReactNode; previousLabel: string; previousScrollY?: number; back: () => void }) {
   const enabled = isStandalonePwa()
   const gesture = useRef<Gesture | undefined>(undefined)
+  const preview = useRef<HTMLDivElement>(null)
   const timer = useRef<number | undefined>(undefined)
   const [phase, setPhase] = useState<Phase>('idle')
   const [distance, setDistance] = useState(0)
@@ -35,6 +36,21 @@ export function EdgeSwipeBack({ children, previousLabel, back }: { children: Rea
   useEffect(() => () => {
     if (timer.current !== undefined) window.clearTimeout(timer.current)
   }, [])
+
+  useLayoutEffect(() => {
+    if (!enabled || !preview.current) return
+    const restore = () => { if (preview.current) preview.current.scrollTop = previousScrollY }
+    restore()
+    const frame = window.requestAnimationFrame(restore)
+    const observer = new MutationObserver(restore)
+    observer.observe(preview.current, { childList: true, subtree: true })
+    const stop = window.setTimeout(() => observer.disconnect(), 1200)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.clearTimeout(stop)
+      observer.disconnect()
+    }
+  }, [enabled, previousScrollY, previous])
 
   if (!enabled) return children
 
@@ -122,16 +138,19 @@ export function EdgeSwipeBack({ children, previousLabel, back }: { children: Rea
     <div
       className={`edge-swipe-back ${phase}`}
       data-edge-swipe-back="true"
+      style={style}
       onPointerDown={pointerDown}
       onPointerMove={pointerMove}
       onPointerUp={pointerUp}
       onPointerCancel={cancel}
       onClickCapture={suppressGestureClick}
     >
-      <div className="edge-swipe-underlay" aria-hidden="true">
-        <div className="edge-swipe-cue"><ArrowLeft /><span>{previousLabel}へ戻る</span></div>
+      <div className="edge-swipe-underlay" aria-hidden="true" inert>
+        {previous
+          ? <div ref={preview} className="edge-swipe-preview" data-edge-swipe-preview="true">{previous}</div>
+          : <div className="edge-swipe-cue"><ArrowLeft /><span>{previousLabel}へ戻る</span></div>}
       </div>
-      <div className="edge-swipe-surface" style={style}>{children}</div>
+      <div className="edge-swipe-surface">{children}</div>
     </div>
   )
 }

@@ -52,6 +52,20 @@ describe('EdgeSwipeBack', () => {
     await waitFor(() => expect(back).toHaveBeenCalledOnce())
   })
 
+  it('keeps the real previous screen behind the current screen at its saved scroll position', () => {
+    standalone(true)
+    render(
+      <EdgeSwipeBack previous={<main><h1>直前の旅行一覧</h1></main>} previousLabel="旅行" previousScrollY={240} back={vi.fn()}>
+        <main>旅行の記録</main>
+      </EdgeSwipeBack>,
+    )
+
+    const preview = document.querySelector<HTMLElement>('[data-edge-swipe-preview]')!
+    expect(screen.getByRole('heading', { name: '直前の旅行一覧', hidden: true })).toBeInTheDocument()
+    expect(preview.scrollTop).toBe(240)
+    expect(preview.closest('[inert]')).toBeInTheDocument()
+  })
+
   it('returns to the detail when the swipe is too short', async () => {
     standalone(true)
     const back = vi.fn()
