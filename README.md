@@ -21,8 +21,11 @@
 - スポット詳細から名称・カテゴリ・座標を編集し、関連旅行を選んで写真を旅行ごとに追加・並べ替え・削除できます。
 
 基本操作とバックアップ時の注意は [操作ガイド](docs/user-guide.md) にまとめています。
+初版完成前の確認項目は [初版総合確認チェックリスト](docs/final-acceptance-checklist.md) にまとめています。
 
 ## 公開
+
+アプリ: https://ttm-i.github.io/travel-archive/
 
 GitHub Pagesへは、`main`ブランチへの更新時にGitHub Actionsから自動配信します。公開先が変わっても、旅行や写真はGitHubへ送信されず、利用しているブラウザのIndexedDB内に保存されます。
 
