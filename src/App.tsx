@@ -34,6 +34,7 @@ import { SavedSpotDetail, SpotEditor, SpotEditScreen } from './components/Phase3
 import { Phase4MapHome } from './components/Phase4MapHome'
 import { PrefectureDetail, SavedPrefecturesHome } from './components/Phase5Screens'
 import { BackupScreen, RestoreScreen, TrashScreen } from './components/Phase6Screens'
+import { EdgeSwipeBack } from './components/EdgeSwipeBack'
 import { detachVisitFromSpot, moveTripToTrash } from './trashRepository'
 import { formatBytes, getDataProtectionStatus, getStorageStatus } from './dataStatus'
 import { DEFAULT_MAP_FILTER, DEFAULT_TRIP_SEARCH, type MapFilter, type TripSearchFilter } from './browsingFilters'
@@ -54,6 +55,20 @@ type View =
   | { name: 'trash' }
 type HistoryEntry = { view: View; activeTab: Tab }
 type RouteMotion = 'none' | 'forward' | 'back' | 'tab' | 'replace'
+
+function viewLabel(view: View) {
+  if (view.name === 'root') return view.tab === 'map' ? '訪問マップ' : view.tab === 'trips' ? '旅行' : view.tab === 'prefectures' ? '都道府県' : '設定'
+  if (view.name === 'trip') return '旅行の記録'
+  if (view.name === 'spot') return 'スポット'
+  if (view.name === 'prefecture') return '都道府県の記録'
+  if (view.name === 'trip-editor') return view.id ? '旅行を編集' : '新しい旅行'
+  if (view.name === 'spot-editor') return 'スポットを追加'
+  if (view.name === 'spot-edit') return 'スポットを編集'
+  if (view.name === 'categories') return 'カテゴリ管理'
+  if (view.name === 'backup') return 'バックアップ'
+  if (view.name === 'restore') return 'バックアップから復元'
+  return 'ゴミ箱'
+}
 
 function tabForView(view: View, current: Tab): Tab {
   if (view.name === 'root') return view.tab
@@ -99,9 +114,9 @@ function App() {
     })
   }
   const replace = (next: View) => changeView('replace', () => { setActiveTab(tabForView(next, activeTab)); setView(next) })
-  const goBack = (fallback: View) => {
+  const goBack = (fallback: View, motion: RouteMotion = 'back') => {
     const previous = history.at(-1)
-    changeView('back', () => {
+    changeView(motion, () => {
       if (!previous) { setActiveTab(tabForView(fallback, activeTab)); setView(fallback); return }
       setHistory((current) => current.slice(0, -1))
       setActiveTab(previous.activeTab)
@@ -109,14 +124,39 @@ function App() {
     })
   }
   const routeStage = (content: React.ReactNode) => <div key={routeSequence} className={`route-stage route-${routeMotion}`} data-route-motion={routeMotion}>{content}</div>
-  const browsingShell = (content: React.ReactNode) => <div className="app-shell browsing-shell">{routeStage(content)}<BottomNav active={activeTab} select={openTab} /></div>
+  const browsingShell = (content: React.ReactNode, swipeBack?: { fallback: View }) => {
+    const previous = history.at(-1)?.view ?? swipeBack?.fallback
+    const stage = routeStage(content)
+    return <div className="app-shell browsing-shell">{swipeBack && previous
+      ? <EdgeSwipeBack previousLabel={viewLabel(previous)} back={() => goBack(swipeBack.fallback, 'none')}>{stage}</EdgeSwipeBack>
+      : stage}<BottomNav active={activeTab} select={openTab} /></div>
+  }
   const standaloneShell = (content: React.ReactNode) => <div className="app-shell standalone-shell">{routeStage(content)}</div>
 
-  if (view.name === 'trip' && view.id === 'kyoto') return browsingShell(<TripDetail back={() => goBack({ name: 'root', tab: 'trips' })} openSpot={(id) => navigate({ name: 'spot', id })} />)
-  if (view.name === 'trip') return browsingShell(<SavedTripDetail id={view.id} back={() => goBack({ name: 'root', tab: 'trips' })} edit={() => navigate({ name: 'trip-editor', id: view.id })} remove={() => void (async () => { if (!window.confirm('この旅行をゴミ箱へ移動しますか？スポットは別の旅行から引き続き利用できます。')) return; await moveTripToTrash(view.id); goBack({ name: 'root', tab: 'trips' }) })()} addSpot={() => navigate({ name: 'spot-editor', tripId: view.id })} openSpot={(id) => navigate({ name: 'spot', id, fromTripId: view.id })} />)
-  if (view.name === 'prefecture') return browsingShell(<PrefectureDetail code={view.code} back={() => goBack({ name: 'root', tab: 'prefectures' })} openSpot={(id) => navigate({ name: 'spot', id, fromPrefectureCode: view.code })} />)
-  if (view.name === 'spot' && ['temple', 'cafe', 'lake'].includes(view.id)) return browsingShell(<SpotDetail back={() => goBack({ name: 'trip', id: 'kyoto' })} openTrip={() => navigate({ name: 'trip', id: 'kyoto' })} />)
-  if (view.name === 'spot') return browsingShell(<SavedSpotDetail id={view.id} back={() => goBack(view.fromTripId ? { name: 'trip', id: view.fromTripId } : view.fromPrefectureCode ? { name: 'prefecture', code: view.fromPrefectureCode } : { name: 'root', tab: view.fromMap ? 'map' : 'trips' })} edit={() => navigate({ name: 'spot-edit', id: view.id, contextTripId: view.fromTripId })} removeVisit={async (visitId) => { const result = await detachVisitFromSpot(visitId); if (result.spotDeleted) goBack({ name: 'root', tab: activeTab }); return result }} openTrip={(id) => navigate({ name: 'trip', id })} openPrefecture={(code) => navigate({ name: 'prefecture', code })} openMap={() => { setMapFilter(DEFAULT_MAP_FILTER); navigate({ name: 'root', tab: 'map', focusSpotId: view.id }) }} />)
+  if (view.name === 'trip' && view.id === 'kyoto') {
+    const fallback: View = { name: 'root', tab: 'trips' }
+    return browsingShell(<TripDetail back={() => goBack(fallback)} openSpot={(id) => navigate({ name: 'spot', id })} />, { fallback })
+  }
+  if (view.name === 'trip') {
+    const fallback: View = { name: 'root', tab: 'trips' }
+    return browsingShell(<SavedTripDetail id={view.id} back={() => goBack(fallback)} edit={() => navigate({ name: 'trip-editor', id: view.id })} remove={() => void (async () => { if (!window.confirm('この旅行をゴミ箱へ移動しますか？スポットは別の旅行から引き続き利用できます。')) return; await moveTripToTrash(view.id); goBack(fallback) })()} addSpot={() => navigate({ name: 'spot-editor', tripId: view.id })} openSpot={(id) => navigate({ name: 'spot', id, fromTripId: view.id })} />, { fallback })
+  }
+  if (view.name === 'prefecture') {
+    const fallback: View = { name: 'root', tab: 'prefectures' }
+    return browsingShell(<PrefectureDetail code={view.code} back={() => goBack(fallback)} openSpot={(id) => navigate({ name: 'spot', id, fromPrefectureCode: view.code })} />, { fallback })
+  }
+  if (view.name === 'spot' && ['temple', 'cafe', 'lake'].includes(view.id)) {
+    const fallback: View = { name: 'trip', id: 'kyoto' }
+    return browsingShell(<SpotDetail back={() => goBack(fallback)} openTrip={() => navigate({ name: 'trip', id: 'kyoto' })} />, { fallback })
+  }
+  if (view.name === 'spot') {
+    const fallback: View = view.fromTripId
+      ? { name: 'trip', id: view.fromTripId }
+      : view.fromPrefectureCode
+        ? { name: 'prefecture', code: view.fromPrefectureCode }
+        : { name: 'root', tab: view.fromMap ? 'map' : 'trips' }
+    return browsingShell(<SavedSpotDetail id={view.id} back={() => goBack(fallback)} edit={() => navigate({ name: 'spot-edit', id: view.id, contextTripId: view.fromTripId })} removeVisit={async (visitId) => { const result = await detachVisitFromSpot(visitId); if (result.spotDeleted) goBack({ name: 'root', tab: activeTab }); return result }} openTrip={(id) => navigate({ name: 'trip', id })} openPrefecture={(code) => navigate({ name: 'prefecture', code })} openMap={() => { setMapFilter(DEFAULT_MAP_FILTER); navigate({ name: 'root', tab: 'map', focusSpotId: view.id }) }} />, { fallback })
+  }
   if (view.name === 'trip-editor') return standaloneShell(<SavedTripEditor tripId={view.id} back={() => goBack({ name: 'root', tab: 'trips' })} saved={(id) => replace({ name: 'trip', id })} />)
   if (view.name === 'categories') return standaloneShell(<CategoryManager kind={view.kind} back={() => goBack({ name: 'root', tab: 'settings' })} />)
   if (view.name === 'spot-editor') return standaloneShell(<SpotEditor tripId={view.tripId} back={() => goBack({ name: 'trip', id: view.tripId })} saved={(id) => replace({ name: 'spot', id, fromTripId: view.tripId })} />)

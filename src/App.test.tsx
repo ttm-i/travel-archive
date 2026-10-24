@@ -6,6 +6,7 @@ import { db } from './db'
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
   Reflect.deleteProperty(document, 'startViewTransition')
   delete document.documentElement.dataset.routeMotion
 })
@@ -74,6 +75,36 @@ describe('trip navigation', () => {
     expect(await screen.findByRole('heading', { name: '旅行' })).toBeInTheDocument()
     expect(document.querySelector('[data-route-motion="tab"]')).toBeInTheDocument()
     expect(startViewTransition).not.toHaveBeenCalled()
+  })
+
+  it('returns from a detail with an edge swipe only in standalone mode', async () => {
+    vi.stubGlobal('matchMedia', vi.fn((query: string) => ({
+      matches: query === '(display-mode: standalone)',
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })))
+    const now = new Date()
+    await db.trips.put({ id: 'swipe-test-trip', name: 'スワイプ確認旅行', startDate: '2026-10-01', endDate: '2026-10-02', createdAt: now, updatedAt: now })
+    render(<App />)
+
+    expect(document.querySelector('[data-edge-swipe-back]')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '旅行' }))
+    fireEvent.click(await screen.findByRole('button', { name: /スワイプ確認旅行/ }))
+    const frame = document.querySelector('[data-edge-swipe-back]')!
+    vi.spyOn(frame, 'getBoundingClientRect').mockReturnValue({ x: 0, y: 0, width: 390, height: 844, top: 0, right: 390, bottom: 844, left: 0, toJSON: () => ({}) })
+
+    fireEvent.pointerDown(frame, { pointerId: 1, pointerType: 'touch', isPrimary: true, clientX: 10, clientY: 100 })
+    fireEvent.pointerMove(frame, { pointerId: 1, pointerType: 'touch', isPrimary: true, clientX: 180, clientY: 102 })
+    fireEvent.pointerUp(frame, { pointerId: 1, pointerType: 'touch', isPrimary: true, clientX: 180, clientY: 102 })
+
+    expect(await screen.findByRole('heading', { name: '旅行' })).toBeInTheDocument()
+    expect(document.querySelector('[data-edge-swipe-back]')).not.toBeInTheDocument()
+    await db.trips.delete('swipe-test-trip')
   })
 })
 
