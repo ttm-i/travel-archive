@@ -20,7 +20,7 @@ function newest(values: Array<Date | undefined>) {
 }
 
 export async function getDataProtectionStatus(): Promise<DataProtectionStatus> {
-  const [trips, spots, visits, images, coverAssets, companions, spotCategories, backup] = await Promise.all([
+  const [trips, spots, visits, images, coverAssets, companions, spotCategories, backup, partialRestore] = await Promise.all([
     db.trips.toArray(),
     db.spots.toArray(),
     db.visits.toArray(),
@@ -29,7 +29,9 @@ export async function getDataProtectionStatus(): Promise<DataProtectionStatus> {
     db.companionCategories.toArray(),
     db.spotCategories.toArray(),
     db.metadata.get('lastBackupSavedAt'),
+    db.metadata.get('lastPartialRestoreAt'),
   ])
+  const partialRestoreAt = typeof partialRestore?.value === 'string' ? new Date(partialRestore.value) : undefined
   const latestChangeAt = newest([
     ...trips.map((item) => item.updatedAt),
     ...spots.map((item) => item.updatedAt),
@@ -38,6 +40,7 @@ export async function getDataProtectionStatus(): Promise<DataProtectionStatus> {
     ...coverAssets.map((item) => item.createdAt),
     ...companions.map((item) => item.updatedAt),
     ...spotCategories.map((item) => item.updatedAt),
+    partialRestoreAt,
   ])
   const lastBackupAt = typeof backup?.value === 'string' ? backup.value : undefined
   const backupTime = lastBackupAt ? new Date(lastBackupAt).getTime() : Number.NaN
