@@ -255,7 +255,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .pwa-banner button { min-height: 34px; padding: 0 11px; border: 0; background: var(--surface); color: var(--forest); font-size: 10px; font-weight: 700; }
 .pwa-banner .dismiss { width: 30px; min-height: 30px; padding: 0; display: grid; place-items: center; background: transparent; color: white; }
 .pwa-banner .dismiss svg { width: 15px; }
-.pwa-banner.offline { grid-template-columns: 30px 1fr; background: #4c5651; }
+.pwa-banner.offline { grid-template-columns: 30px 1fr auto; background: #4c5651; }
 .pwa-banner.ready { grid-template-columns: 30px 1fr; }
 
 .fatal-error { width: min(100%, 480px); min-height: 100svh; margin: 0 auto; padding: max(80px, env(safe-area-inset-top)) 28px 40px; background: var(--paper); color: var(--ink); }

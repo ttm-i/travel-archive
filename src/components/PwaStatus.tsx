@@ -4,6 +4,7 @@ import { useRegisterSW } from 'virtual:pwa-register/react'
 
 export function PwaStatus() {
   const [online, setOnline] = useState(navigator.onLine)
+  const [offlineDismissed, setOfflineDismissed] = useState(false)
   const [showReady, setShowReady] = useState(false)
   const {
     offlineReady: [offlineReady, setOfflineReady],
@@ -16,7 +17,11 @@ export function PwaStatus() {
   })
 
   useEffect(() => {
-    const update = () => setOnline(navigator.onLine)
+    const update = () => {
+      const nextOnline = navigator.onLine
+      setOnline(nextOnline)
+      if (nextOnline) setOfflineDismissed(false)
+    }
     window.addEventListener('online', update)
     window.addEventListener('offline', update)
     return () => {
@@ -46,8 +51,14 @@ export function PwaStatus() {
     )
   }
 
-  if (!online) {
-    return <aside className="pwa-banner offline" role="status"><WifiOff /><div><strong>オフラインで使用中</strong><span>記録はこのiPhoneに保存されます。</span></div></aside>
+  if (!online && !offlineDismissed) {
+    return (
+      <aside className="pwa-banner offline" role="status">
+        <WifiOff />
+        <div><strong>オフラインで使用中</strong><span>記録はこのiPhoneに保存されます。</span></div>
+        <button className="dismiss" type="button" aria-label="オフライン通知を閉じる" onClick={() => setOfflineDismissed(true)}><X /></button>
+      </aside>
+    )
   }
 
   if (showReady) {
