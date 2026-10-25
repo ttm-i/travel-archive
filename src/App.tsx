@@ -102,6 +102,7 @@ function App() {
   const [routeMotion, setRouteMotion] = useState<RouteMotion>('none')
   const [routeSequence, setRouteSequence] = useState(0)
   const pendingScrollY = useRef<number | undefined>(undefined)
+  const navigationGuard = useRef<(() => boolean) | undefined>(undefined)
 
   useLayoutEffect(() => {
     if (pendingScrollY.current === undefined) return
@@ -116,10 +117,12 @@ function App() {
     update()
   }
   const openTab = (tab: Tab) => {
+    if (navigationGuard.current && !navigationGuard.current()) return
     pendingScrollY.current = 0
     changeView('tab', () => { setHistory([]); setActiveTab(tab); setView({ name: 'root', tab }) })
   }
   const navigate = (next: View) => {
+    if (navigationGuard.current && !navigationGuard.current()) return
     const scrollY = window.scrollY
     pendingScrollY.current = 0
     changeView('forward', () => {
@@ -133,6 +136,7 @@ function App() {
     changeView('replace', () => { setActiveTab(tabForView(next, activeTab)); setView(next) })
   }
   const goBack = (fallback: View, motion: RouteMotion = 'back') => {
+    if (navigationGuard.current && !navigationGuard.current()) return
     const previous = history.at(-1)
     pendingScrollY.current = previous?.scrollY ?? 0
     changeView(motion, () => {
@@ -150,7 +154,7 @@ function App() {
     }
     if (target.name === 'trip') {
       const fallback: View = { name: 'root', tab: 'trips' }
-      return { content: <SavedTripDetail id={target.id} back={() => goBack(fallback)} edit={() => navigate({ name: 'trip-editor', id: target.id })} remove={() => void (async () => { if (!window.confirm('この旅行をゴミ箱へ移動しますか？スポットは別の旅行から引き続き利用できます。')) return; await moveTripToTrash(target.id); goBack(fallback) })()} addSpot={() => navigate({ name: 'spot-editor', tripId: target.id })} openSpot={(id) => navigate({ name: 'spot', id, fromTripId: target.id })} />, fallback, swipeBack: true }
+      return { content: <SavedTripDetail id={target.id} back={() => goBack(fallback)} edit={() => navigate({ name: 'trip-editor', id: target.id })} remove={() => void (async () => { if (!window.confirm('この旅行をゴミ箱へ移動しますか？スポットは別の旅行から引き続き利用できます。')) return; await moveTripToTrash(target.id); goBack(fallback) })()} addSpot={() => navigate({ name: 'spot-editor', tripId: target.id })} openSpot={(id) => navigate({ name: 'spot', id, fromTripId: target.id })} registerNavigationGuard={preview ? undefined : (guard) => { navigationGuard.current = guard }} />, fallback, swipeBack: true }
     }
     if (target.name === 'prefecture') {
       const fallback: View = { name: 'root', tab: 'prefectures' }

@@ -88,6 +88,7 @@ export interface Visit {
   id: EntityId
   tripId: EntityId
   spotId: EntityId
+  spotOrder?: number
   coverImageId?: EntityId
   photoOrder?: EntityId[]
   createdAt: Date

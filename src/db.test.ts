@@ -84,6 +84,20 @@ describe('Travel Archive database', () => {
     expect((await db.images.get('legacy-later'))?.imageBlob).toBeTruthy()
   })
 
+  it('assigns stable trip spot order when upgrading a version 4 database', async () => {
+    const legacy = new Dexie(DATABASE_NAME)
+    legacy.version(4).stores({ visits: 'id, tripId, spotId, [tripId+spotId], updatedAt, deletedAt' })
+    await legacy.open()
+    await legacy.table('visits').bulkAdd([
+      { id: 'later', tripId: 'trip', spotId: 'spot-b', createdAt: new Date('2026-01-02'), updatedAt: new Date('2026-01-02') },
+      { id: 'earlier', tripId: 'trip', spotId: 'spot-a', createdAt: new Date('2026-01-01'), updatedAt: new Date('2026-01-01') },
+    ])
+    legacy.close()
+    await initializeDatabase()
+    expect((await db.visits.get('earlier'))?.spotOrder).toBe(0)
+    expect((await db.visits.get('later'))?.spotOrder).toBe(1)
+  })
+
   it('keeps a bounded local app log', async () => {
     await initializeDatabase()
     await recordAppLog('info', 'database ready')

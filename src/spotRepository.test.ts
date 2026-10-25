@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DATABASE_NAME, db, initializeDatabase } from './db'
 import type { ProcessedImage } from './imageProcessing'
 import { getVisitImages } from './imageOrder'
-import { addExistingSpotVisit, createSpotWithVisit, deleteSpotImage, getReusableSpots, getSpotEditData, saveSpotEdits, setSpotRepresentativeImage, validateJapanCoordinate } from './spotRepository'
+import { addExistingSpotVisit, createSpotWithVisit, deleteSpotImage, getReusableSpots, getSpotEditData, getTripSpots, saveSpotEdits, saveTripSpotOrder, setSpotRepresentativeImage, validateJapanCoordinate } from './spotRepository'
 import { saveTrip } from './travelRepository'
 
 const testImage = (label: string): ProcessedImage => ({
@@ -50,6 +50,24 @@ describe('phase 3 spot, visit and photo storage', () => {
     await addExistingSpotVisit(secondTrip, spotId)
     expect(await db.spots.count()).toBe(1)
     expect(await db.visits.where('spotId').equals(spotId).count()).toBe(2)
+  })
+
+  it('stores a trip-specific spot order and appends newly added spots', async () => {
+    const tripId = await makeTrip('順番を決める旅行')
+    const first = await createSpotWithVisit({ tripId, name: '最初', latitude: 35.01127, longitude: 135.79315, effectivePrefectureCode: 26, images: [testImage('first')], mainImageIndex: 0 })
+    const second = await createSpotWithVisit({ tripId, name: '二番目', latitude: 35.02127, longitude: 135.80315, effectivePrefectureCode: 26, images: [testImage('second')], mainImageIndex: 0 })
+    await saveTripSpotOrder(tripId, [second.visitId, first.visitId])
+    expect((await getTripSpots(tripId)).map(({ spot }) => spot.name)).toEqual(['二番目', '最初'])
+
+    await createSpotWithVisit({ tripId, name: '後から追加', latitude: 35.03127, longitude: 135.81315, effectivePrefectureCode: 26, images: [testImage('third')], mainImageIndex: 0 })
+    expect((await getTripSpots(tripId)).map(({ spot }) => spot.name)).toEqual(['二番目', '最初', '後から追加'])
+  })
+
+  it('rejects saving an order that omits a current visit', async () => {
+    const tripId = await makeTrip('変更を検知する旅行')
+    const first = await createSpotWithVisit({ tripId, name: '最初', latitude: 35.01127, longitude: 135.79315, effectivePrefectureCode: 26, images: [testImage('first')], mainImageIndex: 0 })
+    await createSpotWithVisit({ tripId, name: '二番目', latitude: 35.02127, longitude: 135.80315, effectivePrefectureCode: 26, images: [testImage('second')], mainImageIndex: 0 })
+    await expect(saveTripSpotOrder(tripId, [first.visitId])).rejects.toThrow('スポットの内容が変更されています')
   })
 
   it('changes the representative image and uses it for trip thumbnails', async () => {

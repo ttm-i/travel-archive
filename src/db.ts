@@ -15,7 +15,22 @@ import type {
 } from './types'
 
 export const DATABASE_NAME = 'travel-archive'
-export const DATABASE_VERSION = 4
+export const DATABASE_VERSION = 5
+
+const stores = {
+  trips: 'id, startDate, endDate, updatedAt, deletedAt, coverImageId, coverAssetId',
+  companionCategories: 'id, name, sortOrder',
+  tripCompanionCategories: 'id, tripId, categoryId, [tripId+categoryId]',
+  tripPrefectures: 'id, tripId, prefectureCode, [tripId+prefectureCode]',
+  spots: 'id, name, effectivePrefectureCode, spotCategoryId, updatedAt, deletedAt',
+  visits: 'id, tripId, spotId, [tripId+spotId], spotOrder, updatedAt, deletedAt',
+  images: 'id, visitId, sortOrder, createdAt',
+  spotCategories: 'id, name, sortOrder',
+  metadata: 'key, updatedAt',
+  logs: '++id, level, createdAt',
+  coverAssets: 'id, ownerType, ownerId, [ownerType+ownerId], createdAt',
+  prefectureCovers: 'prefectureCode, imageId, assetId, updatedAt',
+}
 
 class TravelArchiveDatabase extends Dexie {
   trips!: EntityTable<Trip, 'id'>
@@ -33,26 +48,27 @@ class TravelArchiveDatabase extends Dexie {
 
   constructor() {
     super(DATABASE_NAME)
-    this.version(DATABASE_VERSION).stores({
-      trips: 'id, startDate, endDate, updatedAt, deletedAt, coverImageId, coverAssetId',
-      companionCategories: 'id, name, sortOrder',
-      tripCompanionCategories: 'id, tripId, categoryId, [tripId+categoryId]',
-      tripPrefectures: 'id, tripId, prefectureCode, [tripId+prefectureCode]',
-      spots: 'id, name, effectivePrefectureCode, spotCategoryId, updatedAt, deletedAt',
-      visits: 'id, tripId, spotId, [tripId+spotId], updatedAt, deletedAt',
-      images: 'id, visitId, sortOrder, createdAt',
-      spotCategories: 'id, name, sortOrder',
-      metadata: 'key, updatedAt',
-      logs: '++id, level, createdAt',
-      coverAssets: 'id, ownerType, ownerId, [ownerType+ownerId], createdAt',
-      prefectureCovers: 'prefectureCode, imageId, assetId, updatedAt',
-    }).upgrade(async (transaction) => {
+    this.version(4).stores({ ...stores, visits: 'id, tripId, spotId, [tripId+spotId], updatedAt, deletedAt' }).upgrade(async (transaction) => {
       const visits = await transaction.table('visits').toArray()
       const images = transaction.table('images')
       for (const visit of visits) {
         const ordered = await images.where('visitId').equals(visit.id).sortBy('sortOrder')
         visit.photoOrder = ordered.map((image) => image.id)
         await transaction.table('visits').put(visit)
+      }
+    })
+    this.version(DATABASE_VERSION).stores(stores).upgrade(async (transaction) => {
+      const visits = await transaction.table('visits').toArray()
+      const byTrip = new Map<string, typeof visits>()
+      for (const visit of visits) byTrip.set(visit.tripId, [...(byTrip.get(visit.tripId) ?? []), visit])
+      for (const tripVisits of byTrip.values()) {
+        tripVisits.sort((left, right) => {
+          const created = new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime()
+          return created || String(left.id).localeCompare(String(right.id))
+        })
+        for (let spotOrder = 0; spotOrder < tripVisits.length; spotOrder += 1) {
+          await transaction.table('visits').update(tripVisits[spotOrder].id, { spotOrder })
+        }
       }
     })
   }

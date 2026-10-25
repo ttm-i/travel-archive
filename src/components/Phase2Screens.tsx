@@ -4,6 +4,7 @@ import {
   ArrowDown,
   ArrowLeft,
   ArrowUp,
+  ArrowUpDown,
   CalendarDays,
   Check,
   ChevronLeft,
@@ -24,7 +25,7 @@ import { db } from '../db'
 import { DEFAULT_CROP, loadTripCoverDraft, resolveTripCover, saveTripCover, type TripCoverDraft } from '../coverRepository'
 import { storageErrorMessage } from '../dataStatus'
 import { PREFECTURES, prefectureName } from '../prefectures'
-import { getTripSpots } from '../spotRepository'
+import { getTripSpots, saveTripSpotOrder } from '../spotRepository'
 import { BlobImage, CroppedBlobImage } from './BlobImage'
 import { TripCoverEditor } from './TripCoverEditor'
 import { DEFAULT_TRIP_SEARCH, spotMatchesTripSearch, tripSearchCount, UNCATEGORIZED, type TripSearchFilter } from '../browsingFilters'
@@ -187,7 +188,7 @@ export function SavedTripsHome({ openTrip, add, filter, changeFilter, scrollY, r
   )
 }
 
-export function SavedTripDetail({ id, back, edit, remove, addSpot, openSpot }: { id: string; back: () => void; edit: () => void; remove: () => void; addSpot: () => void; openSpot: (id: string) => void }) {
+export function SavedTripDetail({ id, back, edit, remove, addSpot, openSpot, registerNavigationGuard }: { id: string; back: () => void; edit: () => void; remove: () => void; addSpot: () => void; openSpot: (id: string) => void; registerNavigationGuard?: (guard?: () => boolean) => void }) {
   const trip = useLiveQuery(() => db.trips.get(id), [id])
   const details = useLiveQuery(async () => {
     const [companionLinks, prefectureLinks] = await Promise.all([
@@ -199,17 +200,71 @@ export function SavedTripDetail({ id, back, edit, remove, addSpot, openSpot }: {
   }, [id], { companionNames: [], prefectureCodes: [] })
   const tripSpots = useLiveQuery(() => getTripSpots(id), [id], [])
   const cover = useLiveQuery(() => trip ? resolveTripCover(trip) : Promise.resolve(undefined), [trip])
+  const [reordering, setReordering] = useState(false)
+  const [draftVisitIds, setDraftVisitIds] = useState<string[]>([])
+  const [savingOrder, setSavingOrder] = useState(false)
+  const [orderMessage, setOrderMessage] = useState('')
+  const [moveAnimation, setMoveAnimation] = useState<{ id: string; direction: 'up' | 'down' }>()
+  const savedVisitIds = useMemo(() => tripSpots.map(({ visit }) => visit.id), [tripSpots])
+  const orderChanged = reordering && draftVisitIds.join('\u0000') !== savedVisitIds.join('\u0000')
+  const displayedSpots = useMemo(() => {
+    if (!reordering) return tripSpots
+    const rows = new Map(tripSpots.map((row) => [row.visit.id, row]))
+    return draftVisitIds.flatMap((visitId) => {
+      const row = rows.get(visitId)
+      return row ? [row] : []
+    })
+  }, [draftVisitIds, reordering, tripSpots])
+
+  useEffect(() => {
+    if (!registerNavigationGuard) return
+    registerNavigationGuard(() => !orderChanged || window.confirm('並び替えを確定せずに移動しますか？変更した順番は破棄されます。'))
+    return () => registerNavigationGuard(undefined)
+  }, [orderChanged, registerNavigationGuard])
+
+  const startReordering = () => {
+    setDraftVisitIds(savedVisitIds)
+    setOrderMessage('')
+    setReordering(true)
+  }
+  const moveSpot = (index: number, amount: -1 | 1) => {
+    const nextIndex = index + amount
+    if (nextIndex < 0 || nextIndex >= draftVisitIds.length) return
+    const movingId = draftVisitIds[index]
+    setDraftVisitIds((current) => {
+      const next = [...current]
+      ;[next[index], next[nextIndex]] = [next[nextIndex], next[index]]
+      return next
+    })
+    setMoveAnimation({ id: movingId, direction: amount < 0 ? 'up' : 'down' })
+    window.setTimeout(() => setMoveAnimation((current) => current?.id === movingId ? undefined : current), 220)
+  }
+  const finishReordering = async () => {
+    if (!orderChanged) { setReordering(false); return }
+    setSavingOrder(true)
+    setOrderMessage('')
+    try {
+      await saveTripSpotOrder(id, draftVisitIds)
+      setReordering(false)
+    } catch (error) {
+      setOrderMessage(storageErrorMessage(error, '並び順を保存できませんでした'))
+    } finally {
+      setSavingOrder(false)
+    }
+  }
   if (!trip) return <main className="screen sub-screen"><BackHeader title="旅行の記録" back={back} /><p className="loading-note">旅行を読み込んでいます…</p></main>
   const days = Math.round((new Date(`${trip.endDate}T00:00:00`).getTime() - new Date(`${trip.startDate}T00:00:00`).getTime()) / 86400000) + 1
   return (
     <main className="screen sub-screen">
-      <BackHeader title="旅行の記録" back={back} action={<><button className="header-trash" type="button" onClick={remove} aria-label="旅行をゴミ箱へ移動"><Trash2 /></button><button className="text-action" type="button" onClick={edit}>編集</button></>} />
+      <BackHeader title="旅行の記録" back={back} action={reordering ? <span className="step-count">並び替え中</span> : <><button className="header-trash" type="button" onClick={remove} aria-label="旅行をゴミ箱へ移動"><Trash2 /></button><button className="text-action" type="button" onClick={edit}>編集</button></>} />
       <section className={`saved-trip-hero ${cover ? 'has-cover' : ''}`}>{cover && <CroppedBlobImage blob={cover.imageBlob} alt={`${trip.name}の表紙`} crop={cover.heroCrop} />}<div><span>{formatDateRange(trip.startDate, trip.endDate)}</span><h1>{trip.name}</h1></div></section>
       <section className="trip-facts"><div><CalendarDays /><span>{days}日間</span></div><div><Users /><span>{details.companionNames.join('・')}</span></div><div><MapPin /><span>{details.prefectureCodes.length}都道府県</span></div></section>
       <section className="saved-trip-meta"><h2>訪れた都道府県</h2><div className="chip-row">{details.prefectureCodes.map((code) => <span className="read-chip" key={code}>{prefectureName(code)}</span>)}</div></section>
       <section className="content-section">
-        <div className="section-heading"><div><span>PLACES</span><h2>訪れたスポット</h2></div><button className="section-add" type="button" onClick={addSpot}><Plus />追加</button></div>
-        {tripSpots.length ? <div className="spot-list">{tripSpots.map(({ spot, imageId, thumbnailBlob }) => <button type="button" key={spot.id} onClick={() => openSpot(spot.id)}><BlobImage blob={thumbnailBlob} imageKey={imageId ? `${imageId}:thumbnail` : undefined} alt={spot.name} /><div><strong>{spot.name}</strong><span>{prefectureName(spot.effectivePrefectureCode)}</span></div><ChevronRight /></button>)}</div> : <button className="empty-spot-button" type="button" onClick={addSpot}><MapPin /><div><strong>最初のスポットを追加</strong><span>座標と写真を端末内に保存します</span></div><ChevronRight /></button>}
+        <div className="section-heading"><div><span>PLACES</span><h2>訪れたスポット</h2></div><div className="spot-section-actions">{reordering ? <button className="section-add reorder-finish" type="button" disabled={savingOrder} onClick={() => void finishReordering()}><Check />{savingOrder ? '保存中' : '完了'}</button> : <>{tripSpots.length > 1 && <button className="section-reorder" type="button" onClick={startReordering}><ArrowUpDown />並び替え</button>}<button className="section-add" type="button" onClick={addSpot}><Plus />追加</button></>}</div></div>
+        {reordering && <p className="reorder-help">上下ボタンで順番を変更し、「完了」で保存します。</p>}
+        {orderMessage && <p className="form-error reorder-error" role="alert">{orderMessage}</p>}
+        {tripSpots.length ? <div className={`spot-list ${reordering ? 'reordering' : ''}`}>{displayedSpots.map(({ visit, spot, imageId, thumbnailBlob }, index) => reordering ? <div className={`reorder-spot-row ${moveAnimation?.id === visit.id ? `move-${moveAnimation.direction}` : ''}`} key={visit.id}><div className="spot-order-controls"><button type="button" disabled={index === 0 || savingOrder} aria-label={`${spot.name}を上へ`} onClick={() => moveSpot(index, -1)}><ArrowUp /></button><button type="button" disabled={index === displayedSpots.length - 1 || savingOrder} aria-label={`${spot.name}を下へ`} onClick={() => moveSpot(index, 1)}><ArrowDown /></button></div><div className="reorder-spot-content"><BlobImage blob={thumbnailBlob} imageKey={imageId ? `${imageId}:thumbnail` : undefined} alt={spot.name} /><div><strong>{spot.name}</strong><span>{prefectureName(spot.effectivePrefectureCode)}</span></div></div></div> : <button type="button" key={visit.id} onClick={() => openSpot(spot.id)}><BlobImage blob={thumbnailBlob} imageKey={imageId ? `${imageId}:thumbnail` : undefined} alt={spot.name} /><div><strong>{spot.name}</strong><span>{prefectureName(spot.effectivePrefectureCode)}</span></div><ChevronRight /></button>)}</div> : <button className="empty-spot-button" type="button" onClick={addSpot}><MapPin /><div><strong>最初のスポットを追加</strong><span>座標と写真を端末内に保存します</span></div><ChevronRight /></button>}
       </section>
     </main>
   )

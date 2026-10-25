@@ -152,10 +152,10 @@ export async function restoreBackup(prepared: PreparedRestore) {
     current.push(image.id)
     imageIdsByVisit.set(image.visitId, current)
   }
-  const restoredVisits = (revive(data.visits) as unknown as Visit[]).map((visit) => ({
+  const restoredVisits = normalizeRestoredSpotOrder((revive(data.visits) as unknown as Visit[]).map((visit) => ({
     ...visit,
     photoOrder: Array.isArray(visit.photoOrder) ? visit.photoOrder : imageIdsByVisit.get(visit.id) ?? [],
-  }))
+  })))
   const tables = [db.trips, db.companionCategories, db.tripCompanionCategories, db.tripPrefectures, db.spots, db.visits, db.images, db.coverAssets, db.prefectureCovers, db.spotCategories, db.metadata]
   if (isFilteredBackup(prepared.manifest)) {
     const mergedVisits: Visit[] = []
@@ -188,6 +188,20 @@ export async function restoreBackup(prepared: PreparedRestore) {
     await db.spotCategories.bulkAdd(revive(data.spotCategories) as never[]); await db.metadata.bulkAdd(revive(data.metadata) as never[])
     await db.metadata.put({ key: 'lastRestoreAt', value: new Date().toISOString(), updatedAt: new Date() })
   })
+}
+
+function normalizeRestoredSpotOrder(visits: Visit[]) {
+  const byTrip = new Map<string, Visit[]>()
+  for (const visit of visits) byTrip.set(visit.tripId, [...(byTrip.get(visit.tripId) ?? []), visit])
+  for (const tripVisits of byTrip.values()) {
+    let nextOrder = tripVisits.reduce((maximum, visit) => Math.max(maximum, visit.spotOrder ?? -1), -1) + 1
+    const missing = tripVisits.filter((visit) => visit.spotOrder === undefined).sort((left, right) => {
+      const created = left.createdAt.getTime() - right.createdAt.getTime()
+      return created || left.id.localeCompare(right.id)
+    })
+    for (const visit of missing) visit.spotOrder = nextOrder++
+  }
+  return visits
 }
 
 export function downloadBackup(blob: Blob, filename: string) {

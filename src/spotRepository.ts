@@ -44,6 +44,12 @@ export function validateJapanCoordinate(latitude: number, longitude: number) {
   return Number.isFinite(latitude) && Number.isFinite(longitude) && latitude >= 20 && latitude <= 46 && longitude >= 122 && longitude <= 154
 }
 
+async function nextTripSpotOrder(tripId: string) {
+  const visits = await db.visits.where('tripId').equals(tripId).toArray()
+  const highestSavedOrder = visits.reduce((maximum, visit) => Math.max(maximum, visit.spotOrder ?? -1), -1)
+  return Math.max(highestSavedOrder, visits.length - 1) + 1
+}
+
 export async function createSpotWithVisit(input: NewSpotInput) {
   const name = input.name.trim().replace(/\s+/g, ' ')
   if (!name) throw new Error('スポット名を入力してください')
@@ -56,6 +62,7 @@ export async function createSpotWithVisit(input: NewSpotInput) {
   const visitId = makeId()
   const imageIds = input.images.map(() => makeId())
   const safeMainIndex = Math.min(Math.max(input.mainImageIndex, 0), input.images.length - 1)
+  const spotOrder = await nextTripSpotOrder(input.tripId)
   await db.transaction('rw', db.spots, db.visits, db.images, async () => {
     await db.spots.add({
       id: spotId,
@@ -70,7 +77,7 @@ export async function createSpotWithVisit(input: NewSpotInput) {
       createdAt: now,
       updatedAt: now,
     })
-    await db.visits.add({ id: visitId, tripId: input.tripId, spotId, coverImageId: imageIds[safeMainIndex], photoOrder: imageIds, createdAt: now, updatedAt: now })
+    await db.visits.add({ id: visitId, tripId: input.tripId, spotId, spotOrder, coverImageId: imageIds[safeMainIndex], photoOrder: imageIds, createdAt: now, updatedAt: now })
     await db.images.bulkAdd(input.images.map((image, index) => ({
       id: imageIds[index],
       visitId,
@@ -101,9 +108,10 @@ export async function addExistingSpotVisit(tripId: string, spotId: string, image
   const imageIds = images.map(() => makeId())
   const photoOrder = [...existingImages.map((image) => image.id), ...imageIds]
   const safeMainIndex = images.length ? Math.min(Math.max(mainImageIndex, 0), images.length - 1) : -1
+  const spotOrder = await nextTripSpotOrder(tripId)
   await db.transaction('rw', db.visits, db.images, async () => {
     const coverImageId = safeMainIndex >= 0 ? imageIds[safeMainIndex] : existing?.coverImageId && photoOrder.includes(existing.coverImageId) ? existing.coverImageId : photoOrder[0]
-    await db.visits.put({ id: visitId, tripId, spotId, coverImageId, photoOrder, createdAt: existing?.createdAt ?? now, updatedAt: now })
+    await db.visits.put({ id: visitId, tripId, spotId, spotOrder, coverImageId, photoOrder, createdAt: existing?.createdAt ?? now, updatedAt: now })
     if (images.length) await db.images.bulkAdd(images.map((image, index) => ({ id: imageIds[index], visitId, imageBlob: image.imageBlob, thumbnailBlob: image.thumbnailBlob, mimeType: image.mimeType, width: image.width, height: image.height, sortOrder: index, createdAt: now })))
   })
   return visitId
@@ -154,6 +162,11 @@ export async function deleteSpotImage(spotId: string, imageId: string) {
 
 export async function getTripSpots(tripId: string) {
   const visits = await db.visits.where('tripId').equals(tripId).filter((visit) => !visit.deletedAt).toArray()
+  visits.sort((left, right) => {
+    const order = (left.spotOrder ?? Number.MAX_SAFE_INTEGER) - (right.spotOrder ?? Number.MAX_SAFE_INTEGER)
+    const created = left.createdAt.getTime() - right.createdAt.getTime()
+    return order || created || left.id.localeCompare(right.id)
+  })
   return Promise.all(visits.map(async (visit) => {
     const spot = await db.spots.get(visit.spotId)
     if (!spot || spot.deletedAt) return undefined
@@ -161,6 +174,19 @@ export async function getTripSpots(tripId: string) {
     const image = imageId ? await db.images.get(imageId) : undefined
     return { visit, spot, imageId: image?.id, thumbnailBlob: image?.thumbnailBlob }
   })).then((items) => items.flatMap((item) => item ? [item] : []))
+}
+
+export async function saveTripSpotOrder(tripId: string, visitIds: string[]) {
+  if (new Set(visitIds).size !== visitIds.length) throw new Error('並び順が正しくありません')
+  await db.transaction('rw', db.visits, async () => {
+    const activeVisits = await db.visits.where('tripId').equals(tripId).filter((visit) => !visit.deletedAt).toArray()
+    const activeIds = new Set(activeVisits.map((visit) => visit.id))
+    if (activeIds.size !== visitIds.length || visitIds.some((id) => !activeIds.has(id))) {
+      throw new Error('スポットの内容が変更されています。画面を開き直してください')
+    }
+    const now = new Date()
+    await Promise.all(visitIds.map((id, spotOrder) => db.visits.update(id, { spotOrder, updatedAt: now })))
+  })
 }
 
 export async function getReusableSpots(tripId: string) {
