@@ -25,6 +25,7 @@ import { db } from '../db'
 import { detectPrefectureCode } from '../geoData'
 import { processImageFile, type ProcessedImage } from '../imageProcessing'
 import { getVisitImages } from '../imageOrder'
+import { resolvePlusCodeInput } from '../plusCode'
 import { prefectureName } from '../prefectures'
 import { addExistingSpotVisit, createSpotWithVisit, deleteSpotImage, getReusableSpots, getSpotEditData, saveSpotEdits, setSpotRepresentativeImage, validateJapanCoordinate, type SpotEditPhoto, type SpotEditVisit } from '../spotRepository'
 import { storageErrorMessage } from '../dataStatus'
@@ -132,7 +133,7 @@ export function SpotEditor({ tripId, back, saved }: { tripId: string; back: () =
           <label className="field"><span>カテゴリ（任意）</span><select value={categoryId} onChange={(event) => setCategoryId(event.target.value)}><option value="">未分類</option>{categories.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label>
           <div className="field"><span>都道府県（座標から自動判定・変更可）</span><div className="chip-row">{prefectureLinks.map((item) => <button className={prefectureCode === item.prefectureCode ? 'selected' : ''} type="button" aria-pressed={prefectureCode === item.prefectureCode} key={item.id} onClick={() => { setPrefectureCode(item.prefectureCode); setPrefectureManuallySelected(true) }}>{prefectureName(item.prefectureCode)}</button>)}</div>{coordinateValid && <small className="detected-prefecture">{detectedPrefectureCode ? `座標の判定：${prefectureName(detectedPrefectureCode)}${prefectureLinks.some((item) => item.prefectureCode === detectedPrefectureCode) ? '' : '（この旅行の訪問先外）'}` : '座標から都道府県を判定できませんでした'}</small>}</div>
         </div>
-        <CoordinateFields latWhole={latWhole} setLatWhole={setLatWhole} latFraction={latFraction} setLatFraction={setLatFraction} lngWhole={lngWhole} setLngWhole={setLngWhole} lngFraction={lngFraction} setLngFraction={setLngFraction} coordinateValid={coordinateValid} latitude={latitude} longitude={longitude} allowedCodes={prefectureLinks.map((item) => item.prefectureCode)} initialBoundsCodes={!coordinateValid && prefectureCode ? [prefectureCode] : []} mapOpen={mapOpen} openMap={() => setMapOpen(true)} closeMap={() => setMapOpen(false)} applyMapCoordinate={(lat, lng) => { applyCoordinates(lat, lng); setMapOpen(false); setMessage('地図で選んだ座標を入力欄に反映しました') }} />
+        <CoordinateFields latWhole={latWhole} setLatWhole={setLatWhole} latFraction={latFraction} setLatFraction={setLatFraction} lngWhole={lngWhole} setLngWhole={setLngWhole} lngFraction={lngFraction} setLngFraction={setLngFraction} coordinateValid={coordinateValid} latitude={latitude} longitude={longitude} allowedCodes={prefectureLinks.map((item) => item.prefectureCode)} initialBoundsCodes={!coordinateValid && prefectureCode ? [prefectureCode] : []} mapOpen={mapOpen} openMap={() => setMapOpen(true)} closeMap={() => setMapOpen(false)} applyMapCoordinate={(lat, lng) => { applyCoordinates(lat, lng); setMapOpen(false); setMessage('地図で選んだ座標を入力欄に反映しました') }} applyPlusCodeCoordinate={(lat, lng) => { applyCoordinates(lat, lng); setMessage('Plus Codeから座標を入力欄に反映しました') }} />
       </> : <>
         <section className="editor-intro compact"><span>REVISIT</span><h1>登録済みスポットを再訪</h1><p>同じ場所を複製せず、この旅行からも参照します。写真追加は任意です。</p></section>
         <label className="spot-search"><Search /><input value={search} placeholder="スポット名で絞り込む" onChange={(event) => setSearch(event.target.value)} /></label>
@@ -245,7 +246,7 @@ export function SpotEditScreen({ spotId, contextTripId, back, saved }: { spotId:
       <label className="field"><span>カテゴリ（任意）</span><select value={categoryId} onChange={(event) => setCategoryId(event.target.value)}><option value="">未分類</option>{categories.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label>
       <div className="field locked-prefecture"><span>都道府県（変更不可）</span><strong><MapPin />{prefectureName(data.spot.effectivePrefectureCode)}</strong><small>複数の旅行から共有されるため、スポット編集では変更できません。</small>{mismatch && <em>入力した座標は{prefectureName(detectedPrefectureCode)}と判定されています。登録都道府県と異なるため、座標をご確認ください。</em>}</div>
     </div>
-    <CoordinateFields latWhole={latWhole} setLatWhole={setLatWhole} latFraction={latFraction} setLatFraction={setLatFraction} lngWhole={lngWhole} setLngWhole={setLngWhole} lngFraction={lngFraction} setLngFraction={setLngFraction} coordinateValid={coordinateValid} latitude={latitude} longitude={longitude} allowedCodes={[data.spot.effectivePrefectureCode]} initialBoundsCodes={[data.spot.effectivePrefectureCode]} mapOpen={mapOpen} openMap={() => setMapOpen(true)} closeMap={() => setMapOpen(false)} applyMapCoordinate={(lat, lng) => { applyCoordinates(lat, lng); setMapOpen(false); setMessage('地図で選んだ座標を入力欄に反映しました') }} />
+    <CoordinateFields latWhole={latWhole} setLatWhole={setLatWhole} latFraction={latFraction} setLatFraction={setLatFraction} lngWhole={lngWhole} setLngWhole={setLngWhole} lngFraction={lngFraction} setLngFraction={setLngFraction} coordinateValid={coordinateValid} latitude={latitude} longitude={longitude} allowedCodes={[data.spot.effectivePrefectureCode]} initialBoundsCodes={[data.spot.effectivePrefectureCode]} mapOpen={mapOpen} openMap={() => setMapOpen(true)} closeMap={() => setMapOpen(false)} applyMapCoordinate={(lat, lng) => { applyCoordinates(lat, lng); setMapOpen(false); setMessage('地図で選んだ座標を入力欄に反映しました') }} applyPlusCodeCoordinate={(lat, lng) => { applyCoordinates(lat, lng); setMessage('Plus Codeから座標を入力欄に反映しました') }} />
     <section className="photo-editor spot-edit-photos"><div className="section-heading"><div><span>PHOTOS</span><h2>旅行ごとの写真</h2></div><small>全{totalPhotos}枚</small></div>
       <label className="visit-photo-select"><span>写真を表示・追加する旅行</span><select aria-label="写真を表示・追加する旅行" value={selectedVisitId} disabled={draftVisits.length === 1} onChange={(event) => setSelectedVisitId(event.target.value)}>{draftVisits.map((visit) => <option key={visit.visitId} value={visit.visitId}>{visit.tripName}（{visit.photos.length}枚）</option>)}</select><small>{draftVisits.length === 1 ? '関連する旅行はこの1件です' : contextTripId && selectedVisit?.tripId === contextTripId ? 'スポット詳細を開いた旅行を選択しています' : '旅行を切り替えても、未保存の変更は保持されます'}</small></label>
       <label className="photo-input"><Camera /><strong>{processing ? '処理中…' : 'この旅行に写真を追加'}</strong><span>{selectedVisit?.tripName ?? ''}に紐づけます</span><input type="file" accept="image/*" multiple disabled={processing || !selectedVisit} onChange={selectFiles} /></label>
@@ -261,11 +262,40 @@ function CoordinateFields(props: {
   lngWhole: string; setLngWhole: (value: string) => void; lngFraction: string; setLngFraction: (value: string) => void
   coordinateValid: boolean; latitude: number; longitude: number; allowedCodes: number[]; initialBoundsCodes: number[]
   mapOpen: boolean; openMap: () => void; closeMap: () => void; applyMapCoordinate: (latitude: number, longitude: number) => void
+  applyPlusCodeCoordinate: (latitude: number, longitude: number) => void
 }) {
   const [lw, lf, gw, gf] = [props.latWhole, props.latFraction, props.lngWhole, props.lngFraction]
+  const [plusCode, setPlusCode] = useState('')
+  const [plusCodeMessage, setPlusCodeMessage] = useState('')
+  const [resolvingPlusCode, setResolvingPlusCode] = useState(false)
+  const applyPlusCode = async () => {
+    if (!plusCode.trim() || resolvingPlusCode) return
+    setResolvingPlusCode(true)
+    setPlusCodeMessage('Plus Codeを確認しています…')
+    try {
+      const result = await resolvePlusCodeInput(plusCode, props.allowedCodes)
+      const detectedCode = await detectPrefectureCode(result.latitude, result.longitude)
+      if (!detectedCode) throw new Error('日本国内の位置として確認できませんでした')
+      if (result.reference && detectedCode !== result.reference.prefectureCode) {
+        throw new Error('地域名と復元された位置が一致しません。フルPlus Codeまたは地図指定をご利用ください')
+      }
+      props.applyPlusCodeCoordinate(result.latitude, result.longitude)
+      setPlusCodeMessage(`${result.fullCode} · ${toFiveDecimals(result.latitude)}, ${toFiveDecimals(result.longitude)} を反映しました`)
+    } catch (error) {
+      setPlusCodeMessage(error instanceof Error ? error.message : 'Plus Codeを座標へ変換できませんでした')
+    } finally {
+      setResolvingPlusCode(false)
+    }
+  }
   return <section className="spot-coordinate-block">
     <div className="coordinate-section-heading"><div><LocateFixed /><span>座標を入力</span></div><small>小数点以下5桁</small></div>
     <DirectCoordinateInputs {...props} />
+    <div className="plus-code-input">
+      <label htmlFor="spot-plus-code"><span>PLUS CODE</span><strong>Googleマップから貼り付け</strong></label>
+      <div><input id="spot-plus-code" value={plusCode} autoCapitalize="characters" autoCorrect="off" spellCheck={false} placeholder="MMQR+QM 新宿区、東京都" onChange={(event) => { setPlusCode(event.target.value); setPlusCodeMessage('') }} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void applyPlusCode() } }} /><button type="button" disabled={!plusCode.trim() || resolvingPlusCode} onClick={() => void applyPlusCode()}>{resolvingPlusCode ? '確認中' : '座標に反映'}</button></div>
+      <small>フルコード、または地域名付きの短縮コードを使用できます。通信は行いません。</small>
+      {plusCodeMessage && <p role="status">{plusCodeMessage}</p>}
+    </div>
     <p className={props.coordinateValid ? 'coordinate-state valid' : 'coordinate-state'}>{props.coordinateValid ? <><Check />{lw}.{lf}, {gw}.{gf}</> : '緯度2桁・経度3桁と小数5桁を入力してください'}</p>
     <button className="map-coordinate-helper" type="button" onClick={props.openMap}><MapIcon /><div><strong>地図から座標を入力</strong><span>地図で場所を合わせ、入力欄へ反映します</span></div><ChevronRight /></button>
     {props.mapOpen && <MapCoordinateDialog initialLatitude={props.latitude} initialLongitude={props.longitude} allowedCodes={props.allowedCodes} initialBoundsCodes={props.initialBoundsCodes} cancel={props.closeMap} confirm={props.applyMapCoordinate} />}

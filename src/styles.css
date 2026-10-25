@@ -367,6 +367,16 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .coordinate-section-heading span { font-size: 11px; font-weight: 700; }
 .coordinate-section-heading small { color: var(--muted); font-size: 8px; }
 .embedded-coordinate { margin: 0; }
+.plus-code-input { margin: 10px 12px 2px; padding: 12px; border: 1px solid var(--line); background: #faf8f2; }
+.plus-code-input > label { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.plus-code-input > label span { color: var(--clay); font-size: 8px; font-weight: 700; letter-spacing: .18em; }
+.plus-code-input > label strong { font-size: 10px; }
+.plus-code-input > div { margin-top: 9px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; }
+.plus-code-input input { width: 100%; min-width: 0; height: 43px; padding: 0 10px; border: 1px solid #c9c8c1; border-radius: 0; background: white; color: var(--ink); font-size: 16px; text-transform: uppercase; }
+.plus-code-input button { min-width: 82px; padding: 0 10px; border: 0; background: var(--forest); color: white; font-size: 9px; font-weight: 700; }
+.plus-code-input button:disabled { background: #a6ada9; }
+.plus-code-input > small { display: block; margin-top: 7px; color: var(--muted); font-size: 8px; line-height: 1.55; }
+.plus-code-input > p { margin: 8px 0 0; color: var(--forest); font-size: 8px; line-height: 1.5; }
 .coordinate-state { min-height: 35px; margin: 0; padding: 8px 12px; display: flex; gap: 5px; align-items: center; color: #8b5f4d; font-size: 9px; }
 .coordinate-state.valid { color: var(--forest); }
 .coordinate-state svg { width: 14px; }
