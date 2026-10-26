@@ -39,6 +39,7 @@ import { detachVisitFromSpot, moveTripToTrash } from './trashRepository'
 import { formatBytes, getDataProtectionStatus, getStorageStatus } from './dataStatus'
 import { DEFAULT_MAP_FILTER, DEFAULT_TRIP_SEARCH, type MapFilter, type TripSearchFilter } from './browsingFilters'
 import { DEFAULT_MAP_PIN_MIN_ZOOM, describeMapPinZoom, getMapPinMinZoom, MAP_PIN_MAX_ZOOM, MAP_PIN_MIN_ZOOM, MAP_PIN_ZOOM_STEP, saveMapPinMinZoom } from './mapPreferences'
+import { restoreScrollAfterRender } from './scrollRestoration'
 
 type Tab = 'map' | 'trips' | 'prefectures' | 'settings'
 type View =
@@ -108,7 +109,7 @@ function App() {
     if (pendingScrollY.current === undefined) return
     const top = pendingScrollY.current
     pendingScrollY.current = undefined
-    window.scrollTo({ top, left: 0, behavior: 'auto' })
+    return restoreScrollAfterRender(top)
   }, [view, routeSequence])
 
   const changeView = (motion: RouteMotion, update: () => void) => {
