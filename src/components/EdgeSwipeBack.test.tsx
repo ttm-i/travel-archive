@@ -46,6 +46,8 @@ describe('EdgeSwipeBack', () => {
     fireEvent.pointerDown(frame, { pointerId: 1, pointerType: 'touch', isPrimary: true, clientX: 10, clientY: 100 })
     fireEvent.pointerMove(frame, { pointerId: 1, pointerType: 'touch', isPrimary: true, clientX: 180, clientY: 103 })
     expect(frame).toHaveClass('dragging')
+    expect(frame).toHaveStyle({ '--edge-swipe-x': '170px' })
+    expect(frame.getAttribute('style')).toContain('--edge-swipe-underlay-x')
     fireEvent.pointerUp(frame, { pointerId: 1, pointerType: 'touch', isPrimary: true, clientX: 180, clientY: 103 })
 
     expect(frame).toHaveClass('completing')

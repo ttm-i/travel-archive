@@ -2,11 +2,13 @@ import 'fake-indexeddb/auto'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DATABASE_NAME, db, initializeDatabase } from '../db'
+import { clearNavigationSnapshots, getNavigationSnapshot } from '../navigationSnapshots'
 import { SavedTripDetail } from './Phase2Screens'
 
 describe('trip spot reordering', () => {
   beforeEach(async () => {
     cleanup()
+    clearNavigationSnapshots()
     db.close()
     await deleteDatabase(DATABASE_NAME)
     await initializeDatabase()
@@ -26,6 +28,7 @@ describe('trip spot reordering', () => {
 
   afterEach(async () => {
     cleanup()
+    clearNavigationSnapshots()
     vi.restoreAllMocks()
     db.close()
     await deleteDatabase(DATABASE_NAME)
@@ -45,6 +48,21 @@ describe('trip spot reordering', () => {
       expect((await db.visits.get('first-visit'))?.spotOrder).toBe(1)
     })
     expect(await screen.findByRole('button', { name: '並び替え' })).toBeInTheDocument()
+  })
+
+  it('reuses the completed detail while the returning route remounts', async () => {
+    const first = render(<SavedTripDetail id="trip" back={vi.fn()} edit={vi.fn()} remove={vi.fn()} addSpot={vi.fn()} openSpot={vi.fn()} />)
+    await screen.findByRole('heading', { name: '並び替える旅行' })
+    await screen.findByRole('button', { name: /最初/ })
+    await waitFor(() => expect(screen.queryByText('旅行を読み込んでいます…')).not.toBeInTheDocument())
+    await waitFor(() => expect(getNavigationSnapshot('trip', 'trip')).toBeDefined())
+    first.unmount()
+
+    render(<SavedTripDetail id="trip" back={vi.fn()} edit={vi.fn()} remove={vi.fn()} addSpot={vi.fn()} openSpot={vi.fn()} />)
+
+    expect(screen.queryByText('旅行を読み込んでいます…')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '並び替える旅行' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /最初/ })).toBeInTheDocument()
   })
 })
 

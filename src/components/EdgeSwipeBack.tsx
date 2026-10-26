@@ -31,6 +31,7 @@ export function EdgeSwipeBack({ children, previous, previousLabel, previousScrol
   const timer = useRef<number | undefined>(undefined)
   const [phase, setPhase] = useState<Phase>('idle')
   const [distance, setDistance] = useState(0)
+  const [surfaceWidth, setSurfaceWidth] = useState(() => window.innerWidth)
   const settleDuration = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 1 : SETTLE_DURATION
 
   useEffect(() => () => {
@@ -101,6 +102,7 @@ export function EdgeSwipeBack({ children, previous, previousLabel, previousScrol
     }
     event.preventDefault()
     const width = event.currentTarget.getBoundingClientRect().width || window.innerWidth
+    setSurfaceWidth(width)
     setDistance(Math.min(deltaX, width))
   }
 
@@ -124,9 +126,14 @@ export function EdgeSwipeBack({ children, previous, previousLabel, previousScrol
     resetAfter('completing', back)
   }
 
+  const progress = Math.min(1, distance / Math.max(1, surfaceWidth))
   const style = phase === 'idle'
     ? undefined
-    : ({ '--edge-swipe-x': `${distance}px` } as CSSProperties)
+    : ({
+        '--edge-swipe-x': `${distance}px`,
+        '--edge-swipe-underlay-x': `${-18 * (1 - progress)}px`,
+        '--edge-swipe-shade': 0.09 * (1 - progress),
+      } as CSSProperties)
 
   const suppressGestureClick = (event: MouseEvent<HTMLDivElement>) => {
     if (!gesture.current?.claimed) return

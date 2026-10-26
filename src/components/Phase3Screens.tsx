@@ -27,8 +27,10 @@ import { processImageFile, type ProcessedImage } from '../imageProcessing'
 import { getVisitImages } from '../imageOrder'
 import { resolvePlusCodeInput } from '../plusCode'
 import { prefectureName } from '../prefectures'
+import { getNavigationSnapshot, mergeNavigationSnapshot, setNavigationSnapshot } from '../navigationSnapshots'
 import { addExistingSpotVisit, createSpotWithVisit, deleteSpotImage, getReusableSpots, getSpotEditData, saveSpotEdits, setSpotRepresentativeImage, validateJapanCoordinate, type SpotEditPhoto, type SpotEditVisit } from '../spotRepository'
 import { storageErrorMessage } from '../dataStatus'
+import type { Spot, TravelImage, Trip, Visit } from '../types'
 import { BlobImage } from './BlobImage'
 import { CoordinateMap, OfflineJapanMap } from './OfflineJapanMap'
 
@@ -348,42 +350,52 @@ function PhotoSelector({ images, mainImageIndex, processing, selectFiles, setMai
 }
 
 export function SavedSpotDetail({ id, back, edit, removeVisit, openTrip, openPrefecture, openMap }: { id: string; back: () => void; edit: () => void; removeVisit: (visitId: string) => Promise<{ spotDeleted: boolean }>; openTrip: (id: string) => void; openPrefecture: (code: number) => void; openMap: () => void }) {
+  type SpotDetails = { categoryName: string; visits: { visit: Visit; trip: Trip | undefined }[]; images: TravelImage[]; representative?: TravelImage }
+  type Snapshot = { spot: Spot; details?: SpotDetails; previewImage?: { id?: string; blob?: Blob } }
   const [viewerIndex, setViewerIndex] = useState<number>()
-  const spot = useLiveQuery(() => db.spots.get(id), [id])
-  const details = useLiveQuery(async () => {
-    if (!spot) return { categoryName: '', visits: [], images: [], representative: undefined }
+  const snapshot = getNavigationSnapshot<Snapshot>('spot', id)
+  const loaded = useLiveQuery(async () => {
+    const spot = await db.spots.get(id)
+    if (!spot) return undefined
     const visits = await db.visits.where('spotId').equals(id).filter((visit) => !visit.deletedAt).toArray()
     const visitsWithTrips = await Promise.all(visits.map(async (visit) => ({ visit, trip: await db.trips.get(visit.tripId) })))
     const imageGroups = await Promise.all(visits.map(getVisitImages))
     const images = imageGroups.flat()
     const representative = spot.representativeImageId ? images.find((image) => image.id === spot.representativeImageId) : undefined
-    return { categoryName: spot.spotCategoryId ? (await db.spotCategories.get(spot.spotCategoryId))?.name ?? '' : '', visits: visitsWithTrips, images, representative }
-  }, [id, spot], { categoryName: '', visits: [], images: [], representative: undefined })
+    const details: SpotDetails = { categoryName: spot.spotCategoryId ? (await db.spotCategories.get(spot.spotCategoryId))?.name ?? '' : '', visits: visitsWithTrips, images, representative }
+    return { spot, details }
+  }, [id])
+  const spot = loaded?.spot ?? snapshot?.spot
+  const details = loaded?.details ?? snapshot?.details
+  useEffect(() => {
+    if (loaded) setNavigationSnapshot<Snapshot>('spot', id, loaded)
+  }, [id, loaded])
   if (!spot) return <main className="screen sub-screen"><BackHeader title="スポット" back={back} /><p className="loading-note">スポットを読み込んでいます…</p></main>
   const unlinkVisit = async (visitId: string, tripName: string) => {
-    const last = details.visits.length === 1
+    const last = details?.visits.length === 1
     const message = last
       ? `「${tripName}」は最後の関連旅行です。関連を外すと、このスポットもゴミ箱へ移動します。よろしいですか？`
       : `「${tripName}」との関連を外しますか？ほかの旅行の記録には残ります。`
     if (window.confirm(message)) await removeVisit(visitId)
   }
-  const heroImage = details.representative ?? details.images[0]
-  const heroIndex = heroImage ? details.images.findIndex((image) => image.id === heroImage.id) : -1
+  const heroImage = details?.representative ?? details?.images[0]
+  const heroIndex = heroImage && details ? details.images.findIndex((image) => image.id === heroImage.id) : -1
   const makeRepresentative = async (imageId: string) => { await setSpotRepresentativeImage(id, imageId) }
   const removeImage = async (imageId: string) => {
-    if (details.images.length <= 1) throw new Error('スポットには写真が1枚以上必要です')
+    if (!details || details.images.length <= 1) throw new Error('スポットには写真が1枚以上必要です')
     if (!window.confirm('この写真を完全に削除しますか？バックアップがなければ元に戻せません。')) return false
     await deleteSpotImage(id, imageId)
     setViewerIndex((current) => current === undefined ? undefined : Math.min(current, details.images.length - 2))
     return true
   }
-  return <main className="screen sub-screen saved-spot-detail"><BackHeader title="スポット" back={back} action={<button className="spot-edit-action" type="button" onClick={edit}><Pencil />編集</button>} />
-    <button className="saved-photo-gallery" type="button" disabled={!heroImage} onClick={() => heroIndex >= 0 && setViewerIndex(heroIndex)}>{heroImage ? <BlobImage blob={heroImage.imageBlob} imageKey={`${heroImage.id}:full`} alt={spot.name} /> : <BlobImage alt={spot.name} />}<div className="gallery-count"><Maximize2 />{details.images.length ? `${details.images.length}枚を見る` : '写真なし'}</div></button>
-    <section className="spot-title-block"><button className="spot-prefecture-link" type="button" onClick={() => openPrefecture(spot.effectivePrefectureCode)}>{prefectureName(spot.effectivePrefectureCode)}<ChevronRight /></button>{details.categoryName && <span> · {details.categoryName}</span>}<h1>{spot.name}</h1><p>{toFiveDecimals(spot.latitude)}, {toFiveDecimals(spot.longitude)}</p></section>
-    {details.images.length > 1 && <section className="saved-photo-grid">{details.images.map((image, index) => <button type="button" key={image.id} aria-label={`${spot.name}の写真${index + 1}を拡大`} onClick={() => setViewerIndex(index)}><BlobImage blob={image.thumbnailBlob} imageKey={`${image.id}:thumbnail`} alt={`${spot.name} ${index + 1}枚目`} /></button>)}</section>}
+  const previewImage = snapshot?.previewImage
+  return <main className={`screen sub-screen saved-spot-detail${details ? '' : ' detail-hydrating'}`}><BackHeader title="スポット" back={back} action={<button className="spot-edit-action" type="button" onClick={edit}><Pencil />編集</button>} />
+    <button className="saved-photo-gallery" type="button" disabled={!heroImage} onClick={() => heroIndex >= 0 && setViewerIndex(heroIndex)}>{heroImage ? <BlobImage blob={heroImage.imageBlob} imageKey={`${heroImage.id}:full`} alt={spot.name} /> : previewImage?.blob ? <BlobImage blob={previewImage.blob} imageKey={previewImage.id ? `${previewImage.id}:preview` : undefined} alt={spot.name} /> : <BlobImage alt={spot.name} />}<div className="gallery-count"><Maximize2 />{details ? `${details.images.length}枚を見る` : '写真を準備中'}</div></button>
+    <section className="spot-title-block"><button className="spot-prefecture-link" type="button" onClick={() => openPrefecture(spot.effectivePrefectureCode)}>{prefectureName(spot.effectivePrefectureCode)}<ChevronRight /></button>{details?.categoryName && <span> · {details.categoryName}</span>}<h1>{spot.name}</h1><p>{toFiveDecimals(spot.latitude)}, {toFiveDecimals(spot.longitude)}</p></section>
+    {details && details.images.length > 1 && <section className="saved-photo-grid">{details.images.map((image, index) => <button type="button" key={image.id} aria-label={`${spot.name}の写真${index + 1}を拡大`} onClick={() => setViewerIndex(index)}><BlobImage blob={image.thumbnailBlob} imageKey={`${image.id}:thumbnail`} alt={`${spot.name} ${index + 1}枚目`} /></button>)}</section>}
     <section className="spot-detail-map"><OfflineJapanMap visitedCodes={[spot.effectivePrefectureCode]} spots={[{ id: spot.id, name: spot.name, latitude: spot.latitude, longitude: spot.longitude, prefectureCode: spot.effectivePrefectureCode }]} selectedSpotId={spot.id} initialCenter={[spot.longitude, spot.latitude]} initialZoom={8} /><button type="button" onClick={openMap}>日本地図で見る<ChevronRight /></button></section>
-    <section className="content-section"><div className="section-heading"><div><span>VISITED ON</span><h2>訪れた旅行</h2></div><small>{details.visits.length}回</small></div>{details.visits.map(({ visit, trip }) => trip ? <div className="visit-row-group" key={visit.id}><button className="visit-row" type="button" onClick={() => openTrip(trip.id)}><MapPin /><div><strong>{trip.name}</strong><span>{trip.startDate} — {trip.endDate}</span></div><ChevronRight /></button><button className="visit-unlink" type="button" aria-label={`${trip.name}との関連を外す`} onClick={() => void unlinkVisit(visit.id, trip.name)}><Unlink /></button></div> : null)}</section>
-    {viewerIndex !== undefined && details.images[viewerIndex] && <PhotoViewer images={details.images} index={viewerIndex} representativeImageId={spot.representativeImageId} name={spot.name} setIndex={setViewerIndex} close={() => setViewerIndex(undefined)} setRepresentative={makeRepresentative} deleteImage={removeImage} />}
+    <section className="content-section"><div className="section-heading"><div><span>VISITED ON</span><h2>訪れた旅行</h2></div><small>{details ? `${details.visits.length}回` : '読込中'}</small></div>{details?.visits.map(({ visit, trip }) => trip ? <div className="visit-row-group" key={visit.id}><button className="visit-row" type="button" onClick={() => { mergeNavigationSnapshot('trip', trip.id, { trip }); openTrip(trip.id) }}><MapPin /><div><strong>{trip.name}</strong><span>{trip.startDate} — {trip.endDate}</span></div><ChevronRight /></button><button className="visit-unlink" type="button" aria-label={`${trip.name}との関連を外す`} onClick={() => void unlinkVisit(visit.id, trip.name)}><Unlink /></button></div> : null)}</section>
+    {details && viewerIndex !== undefined && details.images[viewerIndex] && <PhotoViewer images={details.images} index={viewerIndex} representativeImageId={spot.representativeImageId} name={spot.name} setIndex={setViewerIndex} close={() => setViewerIndex(undefined)} setRepresentative={makeRepresentative} deleteImage={removeImage} />}
   </main>
 }
 
