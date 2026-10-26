@@ -41,9 +41,16 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 @keyframes route-replace-in { from { opacity: .76; transform: scale(.997); } }
 
 .edge-swipe-back { position: relative; min-height: 100svh; overflow-x: clip; touch-action: pan-y; background: var(--surface); }
-.edge-swipe-underlay { position: fixed; z-index: 0; inset: 0 auto 0 50%; width: min(100%, 480px); height: 100svh; transform: translateX(-50%); overflow: hidden; display: flex; align-items: center; padding: 0; color: var(--forest); background: var(--surface); }
+.edge-swipe-underlay { position: fixed; z-index: 0; inset: 0 auto 0 50%; width: min(100%, 480px); height: 100svh; transform: translateX(-50%); overflow: hidden; display: flex; align-items: center; padding: 0; color: var(--forest); background: var(--paper); pointer-events: none; }
 .edge-swipe-underlay::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: var(--ink); opacity: var(--edge-swipe-shade, 0); }
-.edge-swipe-preview { width: 100%; height: 100%; overflow: hidden; background: var(--paper); transform: translate3d(var(--edge-swipe-underlay-x, 0),0,0); will-change: transform; }
+.edge-swipe-preview { width: 100%; height: 100%; overflow: hidden; visibility: hidden; opacity: 0; background: var(--paper); transform: translate3d(var(--edge-swipe-underlay-x, 0),0,0); will-change: transform; }
+.edge-swipe-cue { visibility: hidden; opacity: 0; }
+.edge-swipe-back.dragging .edge-swipe-preview,
+.edge-swipe-back.cancelling .edge-swipe-preview,
+.edge-swipe-back.completing .edge-swipe-preview,
+.edge-swipe-back.dragging .edge-swipe-cue,
+.edge-swipe-back.cancelling .edge-swipe-cue,
+.edge-swipe-back.completing .edge-swipe-cue { visibility: visible; opacity: 1; }
 .edge-swipe-preview > .route-stage { min-height: 100%; }
 .edge-swipe-cue { display: flex; align-items: center; gap: 8px; padding: 10px 13px 10px 10px; border: 1px solid rgba(48,91,75,.14); border-radius: 999px; background: rgba(255,255,255,.72); box-shadow: 0 8px 22px rgba(31,42,37,.08); white-space: nowrap; }
 .edge-swipe-cue svg { width: 18px; }
