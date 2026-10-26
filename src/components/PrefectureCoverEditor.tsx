@@ -37,7 +37,7 @@ export function PrefectureCoverEditor({ code, close }: { code: number; close: ()
   return <div className="prefecture-cover-editor" role="dialog" aria-modal="true" aria-label={`${prefectureName(code)}の表紙を編集`}>
     <header><button type="button" onClick={close} aria-label="表紙編集を閉じる"><X /></button><strong>表紙を編集</strong><span /></header>
     <section className="prefecture-cover-editor-body"><div className="trip-cover-heading"><div><span>PREFECTURE COVER</span><h2>{prefectureName(code)}の表紙</h2></div><small>任意</small></div>
-      {draft.previewBlob ? <CroppedBlobImage blob={draft.previewBlob} alt="都道府県表紙のプレビュー" crop={draft.listCrop} /> : <div className="prefecture-cover-empty"><Images /><span>現在は既定の表示です</span></div>}
+      {draft.previewBlob ? <CroppedBlobImage blob={draft.previewBlob} alt="都道府県詳細の表紙プレビュー" crop={draft.heroCrop} /> : <div className="prefecture-cover-empty"><Images /><span>現在は既定の表示です</span></div>}
       <p>{draft.kind === 'registered' ? '登録済みスポットの写真を一覧と詳細で共通使用します。' : draft.kind === 'asset' || draft.kind === 'new' ? 'カメラロールの写真を一覧と詳細で共通使用します。' : '画像を設定しない場合は、これまでと同じ既定表示になります。'}</p>
       {draft.previewBlob && draft.kind !== 'default' && <button className="prefecture-crop-trigger" type="button" onClick={() => setCropOpen(true)}><SlidersHorizontal />表示位置を調整</button>}
       <div className="trip-cover-actions"><button type="button" disabled={!candidates.length} onClick={() => setPickerOpen(true)}><Images />登録画像から</button><label className={processing ? 'disabled' : ''}><Camera />{processing ? '処理中…' : 'カメラロールから'}<input type="file" accept="image/*" disabled={processing} onChange={(event) => void selectFile(event.target.files?.[0])} /></label><button type="button" onClick={() => setDraft({ kind: 'default', listCrop: DEFAULT_CROP, heroCrop: DEFAULT_CROP })}><RotateCcw />既定に戻す</button></div>
@@ -50,7 +50,7 @@ export function PrefectureCoverEditor({ code, close }: { code: number; close: ()
 }
 
 function PrefectureCropModal({ blob, listCrop, heroCrop, update, close }: { blob: Blob; listCrop: ImageCrop; heroCrop: ImageCrop; update: (kind: 'list' | 'hero', crop: ImageCrop) => void; close: () => void }) {
-  const [kind, setKind] = useState<'list' | 'hero'>('list')
+  const [kind, setKind] = useState<'list' | 'hero'>('hero')
   const drag = useRef<{ x: number; y: number; crop: ImageCrop } | undefined>(undefined)
   const crop = kind === 'list' ? listCrop : heroCrop
   const change = (next: ImageCrop) => update(kind, { x: Math.max(0, Math.min(100, next.x)), y: Math.max(0, Math.min(100, next.y)), zoom: Math.max(1, Math.min(2.5, next.zoom)) })

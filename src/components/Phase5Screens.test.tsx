@@ -28,7 +28,7 @@ describe('phase 5 prefecture browsing', () => {
     render(<SavedPrefecturesHome openPrefecture={openPrefecture} />)
     await waitFor(() => expect(screen.getByText('2スポット')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: /京都府/ }))
-    expect(openPrefecture).toHaveBeenCalledWith(26)
+    await waitFor(() => expect(openPrefecture).toHaveBeenCalledWith(26))
   })
 
   it('lists only spots in the selected prefecture', async () => {
@@ -38,7 +38,7 @@ describe('phase 5 prefecture browsing', () => {
     expect(screen.getByText('喫茶店')).toBeInTheDocument()
     expect(screen.queryByText('琵琶湖')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /南禅寺/ }))
-    expect(openSpot).toHaveBeenCalledWith('spot-kyoto-1')
+    await waitFor(() => expect(openSpot).toHaveBeenCalledWith('spot-kyoto-1'))
   })
 })
 
