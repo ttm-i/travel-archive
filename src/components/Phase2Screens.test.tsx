@@ -24,6 +24,10 @@ describe('trip spot reordering', () => {
       { id: 'first-visit', tripId: 'trip', spotId: 'first-spot', spotOrder: 0, createdAt: now, updatedAt: now },
       { id: 'second-visit', tripId: 'trip', spotId: 'second-spot', spotOrder: 1, createdAt: now, updatedAt: now },
     ])
+    await db.images.bulkAdd([
+      { id: 'first-image', visitId: 'first-visit', imageBlob: new Blob(['first-full']), thumbnailBlob: new Blob(['first-thumb']), mimeType: 'image/jpeg', width: 1200, height: 900, sortOrder: 0, createdAt: now },
+      { id: 'second-image', visitId: 'second-visit', imageBlob: new Blob(['second-full']), thumbnailBlob: new Blob(['second-thumb']), mimeType: 'image/jpeg', width: 1200, height: 900, sortOrder: 0, createdAt: now },
+    ])
   })
 
   afterEach(async () => {
@@ -63,6 +67,15 @@ describe('trip spot reordering', () => {
     expect(screen.queryByText('旅行を読み込んでいます…')).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '並び替える旅行' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /最初/ })).toBeInTheDocument()
+  })
+
+  it('shows all photos from the trip in two-photo gallery mode', async () => {
+    render(<SavedTripDetail id="trip" mode="photos" changeMode={vi.fn()} back={vi.fn()} edit={vi.fn()} remove={vi.fn()} addSpot={vi.fn()} openSpot={vi.fn()} />)
+
+    expect(await screen.findByRole('heading', { name: '旅の写真' })).toBeInTheDocument()
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /の写真を全画面表示/ })).toHaveLength(2))
+    expect(screen.getByText('最初')).toBeInTheDocument()
+    expect(screen.getByText('二番目')).toBeInTheDocument()
   })
 })
 

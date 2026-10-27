@@ -5,7 +5,9 @@ import { db } from '../db'
 import { prefectureName } from '../prefectures'
 import { resolvePrefectureCover } from '../prefectureCoverRepository'
 import { getNavigationSnapshot, mergeNavigationSnapshot, preparePrefectureNavigationSnapshot, prepareSpotNavigationSnapshot, setNavigationSnapshot } from '../navigationSnapshots'
+import { getVisitImages } from '../imageOrder'
 import { BlobImage, CroppedBlobImage } from './BlobImage'
+import { ContextPhotoGallery, DetailViewSwitch, type PhotoGalleryGroup } from './ContextPhotoGallery'
 import { PrefectureCoverEditor } from './PrefectureCoverEditor'
 import type { Spot } from '../types'
 
@@ -35,9 +37,9 @@ export function SavedPrefecturesHome({ openPrefecture }: { openPrefecture: (code
   </main>
 }
 
-export function PrefectureDetail({ code, back, openSpot }: { code: number; back: () => void; openSpot: (id: string) => void }) {
+export function PrefectureDetail({ code, back, openSpot, mode = 'spots', changeMode = () => undefined }: { code: number; back: () => void; openSpot: (id: string) => void; mode?: 'spots' | 'photos'; changeMode?: (mode: 'spots' | 'photos') => void }) {
   type SpotRow = { spot: Spot; imageId?: string; thumbnailBlob?: Blob; visitCount: number }
-  type Snapshot = { cover?: Awaited<ReturnType<typeof resolvePrefectureCover>>; count: number; spots?: SpotRow[] }
+  type Snapshot = { cover?: Awaited<ReturnType<typeof resolvePrefectureCover>>; count: number; spots?: SpotRow[]; photoGroups?: PhotoGalleryGroup[] }
   const [coverEditorOpen, setCoverEditorOpen] = useState(false)
   const snapshot = getNavigationSnapshot<Snapshot>('prefecture', code)
   const coverResult = useLiveQuery(async () => ({ cover: await resolvePrefectureCover(code) }), [code])
@@ -54,17 +56,35 @@ export function PrefectureDetail({ code, back, openSpot }: { code: number; back:
   const cover = coverResult ? coverResult.cover : snapshot?.cover
   const spots = spotsResult ?? snapshot?.spots ?? []
   const count = spotsResult?.length ?? snapshot?.count ?? 0
+  const photoGroupsResult = useLiveQuery(async () => {
+    const rows = await db.spots.where('effectivePrefectureCode').equals(code).filter((spot) => !spot.deletedAt).toArray()
+    const groups = await Promise.all(rows.map(async (spot) => {
+      const visits = await db.visits.where('spotId').equals(spot.id).filter((visit) => !visit.deletedAt).toArray()
+      const withTrips = await Promise.all(visits.map(async (visit) => ({ visit, trip: await db.trips.get(visit.tripId) })))
+      withTrips.sort((left, right) => (right.trip?.startDate ?? '').localeCompare(left.trip?.startDate ?? '') || left.visit.id.localeCompare(right.visit.id))
+      const imageGroups = await Promise.all(withTrips.map(async ({ visit, trip }) => (await getVisitImages(visit)).map((image) => ({ image, spotId: spot.id, spotName: spot.name, contextLabel: trip?.name }))))
+      return { spotId: spot.id, spotName: spot.name, photos: imageGroups.flat(), latestDate: withTrips[0]?.trip?.startDate ?? '' }
+    }))
+    return groups.sort((left, right) => right.latestDate.localeCompare(left.latestDate) || left.spotName.localeCompare(right.spotName, 'ja')).map(({ latestDate: _latestDate, ...group }) => group)
+  }, [code])
+  const photoGroups = photoGroupsResult ?? snapshot?.photoGroups ?? []
+  const photosLoading = photoGroupsResult === undefined && snapshot?.photoGroups === undefined
   useEffect(() => {
     if (!coverResult || !spotsResult) return
-    setNavigationSnapshot<Snapshot>('prefecture', code, { cover: coverResult.cover, count: spotsResult.length, spots: spotsResult })
+    mergeNavigationSnapshot<Snapshot>('prefecture', code, { cover: coverResult.cover, count: spotsResult.length, spots: spotsResult })
   }, [code, coverResult, spotsResult])
+  useEffect(() => {
+    if (photoGroupsResult) mergeNavigationSnapshot<Snapshot>('prefecture', code, { photoGroups: photoGroupsResult })
+  }, [code, photoGroupsResult])
+  const showSpot = (spotId: string) => void prepareSpotNavigationSnapshot(spotId).catch(() => undefined).then(() => openSpot(spotId))
 
   return <main className="screen sub-screen prefecture-detail-screen">
     <BackHeader title="都道府県の記録" back={back} action={<button className="prefecture-cover-edit" type="button" aria-label={`${prefectureName(code)}のタイトル画像を編集`} onClick={() => setCoverEditorOpen(true)}><ImageIcon /><span>表紙</span></button>} />
     <section className={`prefecture-detail-hero${cover ? ' has-cover' : ''}`}>{cover && <CroppedBlobImage blob={cover.imageBlob} crop={cover.heroCrop} alt="" />}<div><span>PREFECTURE</span><h1>{prefectureName(code)}</h1><p>{count}スポットを記録しています</p></div></section>
-    <section className="content-section"><div className="section-heading"><div><span>PLACES</span><h2>訪れたスポット</h2></div><small>{spots.length}件</small></div>
-      {spots.length ? <div className="spot-list">{spots.map(({ spot, imageId, thumbnailBlob, visitCount }) => <button type="button" key={spot.id} onClick={() => { mergeNavigationSnapshot('spot', spot.id, { spot, previewImage: { id: imageId, blob: thumbnailBlob } }); void prepareSpotNavigationSnapshot(spot.id).catch(() => undefined).then(() => openSpot(spot.id)) }}><BlobImage blob={thumbnailBlob} imageKey={imageId ? `${imageId}:thumbnail` : undefined} alt={spot.name} /><div><strong>{spot.name}</strong><span><MapPin />{visitCount}回の旅行で訪問</span></div><ChevronRight /></button>)}</div> : <p className="loading-note">{spotsResult ? 'この都道府県のスポットはありません。' : '記録を読み込んでいます…'}</p>}
-    </section>
+    <DetailViewSwitch mode={mode} changeMode={changeMode} />
+    {mode === 'spots' ? <section className="content-section detail-mode-content"><div className="section-heading"><div><span>PLACES</span><h2>訪れたスポット</h2></div><small>{spots.length}件</small></div>
+      {spots.length ? <div className="spot-list">{spots.map(({ spot, imageId, thumbnailBlob, visitCount }) => <button type="button" key={spot.id} onClick={() => { mergeNavigationSnapshot('spot', spot.id, { spot, previewImage: { id: imageId, blob: thumbnailBlob } }); showSpot(spot.id) }}><BlobImage blob={thumbnailBlob} imageKey={imageId ? `${imageId}:thumbnail` : undefined} alt={spot.name} /><div><strong>{spot.name}</strong><span><MapPin />{visitCount}回の旅行で訪問</span></div><ChevronRight /></button>)}</div> : <p className="loading-note">{spotsResult ? 'この都道府県のスポットはありません。' : '記録を読み込んでいます…'}</p>}
+    </section> : <section className="content-section detail-mode-content photo-mode-content"><div className="section-heading"><div><span>PHOTOS</span><h2>{prefectureName(code)}の写真</h2></div><small>{photoGroups.reduce((total, group) => total + group.photos.length, 0)}枚</small></div><ContextPhotoGallery groups={photoGroups} loading={photosLoading} openSpot={showSpot} /></section>}
     {coverEditorOpen && <PrefectureCoverEditor code={code} close={() => setCoverEditorOpen(false)} />}
   </main>
 }

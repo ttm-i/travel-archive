@@ -53,7 +53,7 @@ export async function prepareTripNavigationSnapshot(id: string) {
     resolveTripCover(trip),
   ])
   const companionNames = (await db.companionCategories.bulkGet(companionLinks.map((link) => link.categoryId))).flatMap((category) => category ? [category.name] : [])
-  setNavigationSnapshot('trip', id, {
+  mergeNavigationSnapshot('trip', id, {
     trip,
     details: { companionNames, prefectureCodes: prefectureLinks.map((link) => link.prefectureCode) },
     tripSpots,
@@ -94,5 +94,5 @@ export async function preparePrefectureNavigationSnapshot(code: number) {
     ])
     return { spot, imageId: image?.id, thumbnailBlob: image?.thumbnailBlob, visitCount }
   }))
-  setNavigationSnapshot('prefecture', code, { cover, count: spots.length, spots })
+  mergeNavigationSnapshot('prefecture', code, { cover, count: spots.length, spots })
 }

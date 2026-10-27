@@ -44,9 +44,9 @@ import { restoreScrollAfterRender } from './scrollRestoration'
 type Tab = 'map' | 'trips' | 'prefectures' | 'settings'
 type View =
   | { name: 'root'; tab: Tab; focusSpotId?: string }
-  | { name: 'trip'; id: string }
+  | { name: 'trip'; id: string; mode?: 'spots' | 'photos' }
   | { name: 'spot'; id: string; fromTripId?: string; fromPrefectureCode?: number; fromMap?: boolean }
-  | { name: 'prefecture'; code: number }
+  | { name: 'prefecture'; code: number; mode?: 'spots' | 'photos' }
   | { name: 'trip-editor'; id?: string }
   | { name: 'categories'; kind: 'companion' | 'spot' }
   | { name: 'spot-editor'; tripId: string }
@@ -155,11 +155,11 @@ function App() {
     }
     if (target.name === 'trip') {
       const fallback: View = { name: 'root', tab: 'trips' }
-      return { content: <SavedTripDetail id={target.id} back={() => goBack(fallback)} edit={() => navigate({ name: 'trip-editor', id: target.id })} remove={() => void (async () => { if (!window.confirm('この旅行をゴミ箱へ移動しますか？スポットは別の旅行から引き続き利用できます。')) return; await moveTripToTrash(target.id); goBack(fallback) })()} addSpot={() => navigate({ name: 'spot-editor', tripId: target.id })} openSpot={(id) => navigate({ name: 'spot', id, fromTripId: target.id })} registerNavigationGuard={preview ? undefined : (guard) => { navigationGuard.current = guard }} />, fallback, swipeBack: true }
+      return { content: <SavedTripDetail id={target.id} mode={target.mode ?? 'spots'} changeMode={(mode) => setView({ ...target, mode })} back={() => goBack(fallback)} edit={() => navigate({ name: 'trip-editor', id: target.id })} remove={() => void (async () => { if (!window.confirm('この旅行をゴミ箱へ移動しますか？スポットは別の旅行から引き続き利用できます。')) return; await moveTripToTrash(target.id); goBack(fallback) })()} addSpot={() => navigate({ name: 'spot-editor', tripId: target.id })} openSpot={(id) => navigate({ name: 'spot', id, fromTripId: target.id })} registerNavigationGuard={preview ? undefined : (guard) => { navigationGuard.current = guard }} />, fallback, swipeBack: true }
     }
     if (target.name === 'prefecture') {
       const fallback: View = { name: 'root', tab: 'prefectures' }
-      return { content: <PrefectureDetail code={target.code} back={() => goBack(fallback)} openSpot={(id) => navigate({ name: 'spot', id, fromPrefectureCode: target.code })} />, fallback, swipeBack: true }
+      return { content: <PrefectureDetail code={target.code} mode={target.mode ?? 'spots'} changeMode={(mode) => setView({ ...target, mode })} back={() => goBack(fallback)} openSpot={(id) => navigate({ name: 'spot', id, fromPrefectureCode: target.code })} />, fallback, swipeBack: true }
     }
     if (target.name === 'spot' && ['temple', 'cafe', 'lake'].includes(target.id)) {
       const fallback: View = { name: 'trip', id: 'kyoto' }
