@@ -750,10 +750,10 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .date-range-modal > header button { width: 40px; height: 40px; border: 0; display: grid; place-items: center; background: transparent; }
 .date-range-modal > header svg { width: 19px; }
 .date-range-modal > header strong { text-align: center; font-size: 12px; }
-.calendar-month-nav { flex: 0 0 58px; padding: 0 12px; display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; }
-.calendar-month-nav button { width: 42px; height: 42px; border: 0; display: grid; place-items: center; background: transparent; color: var(--forest); }
+.calendar-month-nav { flex: 0 0 58px; padding: 0 10px; display: grid; grid-template-columns: 38px 38px 1fr 38px 38px; align-items: center; }
+.calendar-month-nav button { width: 38px; height: 42px; border: 0; display: grid; place-items: center; background: transparent; color: var(--forest); }
 .calendar-month-nav button:last-child { justify-self: end; }
-.calendar-month-nav svg { width: 18px; }
+.calendar-month-nav svg { width: 17px; }
 .calendar-month-nav strong { text-align: center; font: 600 16px 'Noto Serif JP', serif; }
 .calendar-weekdays { flex: 0 0 25px; padding: 0 12px; display: grid; grid-template-columns: repeat(7, 1fr); color: var(--muted); font-size: 8px; text-align: center; }
 .calendar-weekdays span:first-child { color: var(--clay); }

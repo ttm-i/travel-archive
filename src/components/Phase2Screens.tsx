@@ -9,6 +9,8 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   Edit3,
   Luggage,
   MapPin,
@@ -397,7 +399,7 @@ export function DateRangeField({ startDate, endDate, onChange, ariaLabel = '旅�
     </button>
     {open && <div className="date-range-modal" role="dialog" aria-modal="true" aria-label={ariaLabel}>
       <header><button type="button" onClick={() => setOpen(false)} aria-label="カレンダーを閉じる"><X /></button><strong>{ariaLabel}</strong><span /></header>
-      <div className="calendar-month-nav"><button type="button" aria-label="前の月" onClick={() => setVisibleMonth(addMonths(visibleMonth, -1))}><ChevronLeft /></button><strong>{visibleMonth.getFullYear()}年 {visibleMonth.getMonth() + 1}月</strong><button type="button" aria-label="次の月" onClick={() => setVisibleMonth(addMonths(visibleMonth, 1))}><ChevronRight /></button></div>
+      <div className="calendar-month-nav"><button type="button" aria-label="前年の同じ月" onClick={() => setVisibleMonth(addMonths(visibleMonth, -12))}><ChevronsLeft /></button><button type="button" aria-label="前の月" onClick={() => setVisibleMonth(addMonths(visibleMonth, -1))}><ChevronLeft /></button><strong>{visibleMonth.getFullYear()}年 {visibleMonth.getMonth() + 1}月</strong><button type="button" aria-label="次の月" onClick={() => setVisibleMonth(addMonths(visibleMonth, 1))}><ChevronRight /></button><button type="button" aria-label="翌年の同じ月" onClick={() => setVisibleMonth(addMonths(visibleMonth, 12))}><ChevronsRight /></button></div>
       <div className="calendar-weekdays">{['日', '月', '火', '水', '木', '金', '土'].map((day) => <span key={day}>{day}</span>)}</div>
       <div className="calendar-days">{days.map((date) => {
         const value = toDateKey(date)
